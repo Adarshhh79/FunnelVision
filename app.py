@@ -14,10 +14,6 @@ st.set_page_config(
 
 DB_NAME = "funnelvision.db"
 
-# Password required to open Hidden Users
-# CHANGE THIS PASSWORD IF YOU WANT
-HIDDEN_USERS_PASSWORD = "FunnelHidden@123"
-
 STAGES = [
     "Awareness",
     "Interest",
@@ -240,7 +236,7 @@ STAGE_CONTENT = {
 }
 
 # =========================================================
-# DATABASE SETUP
+# DATABASE
 # =========================================================
 
 def setup_db():
@@ -256,8 +252,7 @@ def setup_db():
                 username TEXT UNIQUE NOT NULL,
                 password TEXT NOT NULL,
                 role TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                hidden INTEGER DEFAULT 0
+                created_at TEXT NOT NULL
             )
         """)
 
@@ -276,67 +271,109 @@ def setup_db():
         """)
 
         # -------------------------------------------------
-        # DATABASE MIGRATION
+        # ADD HIDDEN COLUMN TO OLD DATABASES
         # -------------------------------------------------
 
-        user_columns = [
-            row[1]
-            for row in cur.execute(
-                "PRAGMA table_info(users)"
-            ).fetchall()
-        ]
-
-        if "hidden" not in user_columns:
-
-            cur.execute(
-                "ALTER TABLE users ADD COLUMN hidden INTEGER DEFAULT 0"
-            )
-
-        survey_columns = [
+        columns = [
             row[1]
             for row in cur.execute(
                 "PRAGMA table_info(surveys)"
             ).fetchall()
         ]
 
-        if "hidden" not in survey_columns:
+        if "hidden" not in columns:
 
             cur.execute(
                 "ALTER TABLE surveys ADD COLUMN hidden INTEGER DEFAULT 0"
             )
 
         # -------------------------------------------------
-        # CREATE ADMIN ONLY IF DATABASE HAS NO USERS
+        # CREATE ADMIN IF NO ADMIN EXISTS
         # -------------------------------------------------
 
-        cur.execute(
-            "SELECT COUNT(*) FROM users"
-        )
+        admin_exists = cur.execute(
+            "SELECT COUNT(*) FROM users WHERE role='admin'"
+        ).fetchone()[0]
 
-        user_count = cur.fetchone()[0]
+        if admin_exists == 0:
 
-        if user_count == 0:
+            try:
 
-            now = datetime.now()
+                cur.execute(
+                    """
+                    INSERT INTO users(
+                        username,
+                        password,
+                        role,
+                        created_at
+                    )
+                    VALUES(?,?,?,?)
+                    """,
+                    (
+                        "admin",
+                        "admin123",
+                        "admin",
+                        (
+                            datetime.now()
+                            - timedelta(days=30)
+                        ).isoformat()
+                    )
+                )
 
-            cur.execute(
+            except sqlite3.IntegrityError:
+
+                pass
+
+        # -------------------------------------------------
+        # REMOVE OLD DEMO USERS
+        # -------------------------------------------------
+        #
+        # These were users from the original demo database.
+        # They are removed only by username.
+        #
+        # Real users such as Adarshh, Adhithya and allen123
+        # are NOT affected.
+        # -------------------------------------------------
+
+        old_demo_users = [
+            "sarah_m",
+            "james_k",
+            "emma_r",
+            "mike_t"
+        ]
+
+        for demo_username in old_demo_users:
+
+            demo_user = cur.execute(
                 """
-                INSERT INTO users(
-                    username,
-                    password,
-                    role,
-                    created_at,
-                    hidden
-                )
-                VALUES(?,?,?,?,0)
+                SELECT id
+                FROM users
+                WHERE username=?
                 """,
-                (
-                    "admin",
-                    "admin123",
-                    "admin",
-                    (now - timedelta(days=30)).isoformat()
+                (demo_username,)
+            ).fetchone()
+
+            if demo_user:
+
+                demo_user_id = demo_user[0]
+
+                # Delete their surveys first
+                cur.execute(
+                    """
+                    DELETE FROM surveys
+                    WHERE user_id=?
+                    """,
+                    (demo_user_id,)
                 )
-            )
+
+                # Delete the demo user
+                cur.execute(
+                    """
+                    DELETE FROM users
+                    WHERE id=?
+                    """,
+                    (demo_user_id,)
+                )
 
         con.commit()
 
@@ -356,13 +393,15 @@ def get_user(username, password):
                 username,
                 password,
                 role,
-                created_at,
-                hidden
+                created_at
             FROM users
             WHERE lower(username)=lower(?)
             AND password=?
             """,
-            (username, password)
+            (
+                username,
+                password
+            )
         ).fetchone()
 
 
@@ -376,10 +415,9 @@ def register_user(username, password):
                 username,
                 password,
                 role,
-                created_at,
-                hidden
+                created_at
             )
-            VALUES(?,?,?,?,0)
+            VALUES(?,?,?,?)
             """,
             (
                 username,
@@ -394,126 +432,8 @@ def register_user(username, password):
         ).fetchone()[0]
 
 
-def get_visible_users():
-
-    with sqlite3.connect(DB_NAME) as con:
-
-        return con.execute(
-            """
-            SELECT
-                id,
-                username,
-                created_at
-            FROM users
-            WHERE role='user'
-            AND hidden=0
-            ORDER BY id
-            """
-        ).fetchall()
-
-
-def get_hidden_users():
-
-    with sqlite3.connect(DB_NAME) as con:
-
-        return con.execute(
-            """
-            SELECT
-                id,
-                username,
-                created_at
-            FROM users
-            WHERE role='user'
-            AND hidden=1
-            ORDER BY id
-            """
-        ).fetchall()
-
-
-def hide_user(user_id):
-
-    with sqlite3.connect(DB_NAME) as con:
-
-        # Hide the user
-        con.execute(
-            """
-            UPDATE users
-            SET hidden=1
-            WHERE id=?
-            AND role='user'
-            """,
-            (user_id,)
-        )
-
-        # Also hide all of this user's surveys
-        con.execute(
-            """
-            UPDATE surveys
-            SET hidden=1
-            WHERE user_id=?
-            """,
-            (user_id,)
-        )
-
-        con.commit()
-
-
-def unhide_user(user_id):
-
-    with sqlite3.connect(DB_NAME) as con:
-
-        # Unhide user
-        con.execute(
-            """
-            UPDATE users
-            SET hidden=0
-            WHERE id=?
-            AND role='user'
-            """,
-            (user_id,)
-        )
-
-        # Unhide this user's surveys
-        con.execute(
-            """
-            UPDATE surveys
-            SET hidden=0
-            WHERE user_id=?
-            """,
-            (user_id,)
-        )
-
-        con.commit()
-
-
-def delete_user_account(user_id):
-
-    with sqlite3.connect(DB_NAME) as con:
-
-        # First delete all surveys
-        con.execute(
-            """
-            DELETE FROM surveys
-            WHERE user_id=?
-            """,
-            (user_id,)
-        )
-
-        # Then delete the user
-        con.execute(
-            """
-            DELETE FROM users
-            WHERE id=?
-            AND role='user'
-            """,
-            (user_id,)
-        )
-
-        con.commit()
-
-
 # =========================================================
-# SURVEY FUNCTIONS
+# SURVEY DATABASE FUNCTIONS
 # =========================================================
 
 def get_surveys(user_id):
@@ -538,7 +458,12 @@ def get_surveys(user_id):
         ).fetchall()
 
 
-def save_survey(user_id, responses, stage, scores):
+def save_survey(
+    user_id,
+    responses,
+    stage,
+    scores
+):
 
     with sqlite3.connect(DB_NAME) as con:
 
@@ -566,6 +491,31 @@ def save_survey(user_id, responses, stage, scores):
         con.commit()
 
 
+def delete_user_account(user_id):
+
+    with sqlite3.connect(DB_NAME) as con:
+
+        # Delete all surveys belonging to the user
+        con.execute(
+            """
+            DELETE FROM surveys
+            WHERE user_id=?
+            """,
+            (user_id,)
+        )
+
+        # Delete the user account
+        con.execute(
+            """
+            DELETE FROM users
+            WHERE id=?
+            """,
+            (user_id,)
+        )
+
+        con.commit()
+
+
 def get_all_surveys():
 
     with sqlite3.connect(DB_NAME) as con:
@@ -575,7 +525,6 @@ def get_all_surveys():
             SELECT
                 s.id,
                 u.username,
-                u.hidden,
                 s.timestamp,
                 s.stage,
                 s.responses,
@@ -637,33 +586,6 @@ def delete_survey(survey_id):
 
 
 # =========================================================
-# GET LATEST PREDICTED STAGE FOR USER
-# =========================================================
-
-def get_latest_stage(user_id):
-
-    with sqlite3.connect(DB_NAME) as con:
-
-        row = con.execute(
-            """
-            SELECT stage
-            FROM surveys
-            WHERE user_id=?
-            AND hidden=0
-            ORDER BY id DESC
-            LIMIT 1
-            """,
-            (user_id,)
-        ).fetchone()
-
-        if row:
-
-            return row[0]
-
-        return "Not completed"
-
-
-# =========================================================
 # SCORING
 # =========================================================
 
@@ -700,15 +622,24 @@ def calculate(responses):
         key=lambda stage: scores[stage]
     )
 
-    total_score = sum(scores.values())
+    total_score = sum(
+        scores.values()
+    )
 
     match_strength = (
-        (scores[predicted] / total_score) * 100
+        (
+            scores[predicted]
+            / total_score
+        ) * 100
         if total_score > 0
         else 0
     )
 
-    return predicted, scores, match_strength
+    return (
+        predicted,
+        scores,
+        match_strength
+    )
 
 
 # =========================================================
@@ -734,7 +665,9 @@ def products_for_stage(stage):
         if product not in matched
     ]
 
-    return (matched + others)[:4]
+    return (
+        matched + others
+    )[:4]
 
 
 # =========================================================
@@ -749,8 +682,7 @@ def init_state():
         "responses": {},
         "step": 0,
         "last_result": None,
-        "confirm_delete": False,
-        "hidden_users_unlocked": False
+        "confirm_delete": False
     }
 
     for key, value in defaults.items():
@@ -871,7 +803,10 @@ def load_css():
 # HEADER
 # =========================================================
 
-def header(title, subtitle=None):
+def header(
+    title,
+    subtitle=None
+):
 
     st.markdown(
         f'<div class="main-title">{title}</div>',
@@ -887,7 +822,7 @@ def header(title, subtitle=None):
 
 
 # =========================================================
-# LOGIN
+# LOGIN PAGE
 # =========================================================
 
 def login_page():
@@ -902,11 +837,17 @@ def login_page():
         unsafe_allow_html=True
     )
 
-    st.subheader("Welcome back")
+    st.subheader(
+        "Welcome back"
+    )
 
-    with st.form("login_form"):
+    with st.form(
+        "login_form"
+    ):
 
-        username = st.text_input("Username")
+        username = st.text_input(
+            "Username"
+        )
 
         password = st.text_input(
             "Password",
@@ -927,31 +868,22 @@ def login_page():
 
         if row:
 
-            # Prevent hidden users from logging in
-            if row[5] == 1 and row[3] == "user":
+            st.session_state.user = {
+                "id": row[0],
+                "username": row[1],
+                "role": row[3],
+                "created_at": row[4]
+            }
 
-                st.error(
-                    "This account is currently hidden."
-                )
+            if row[3] == "admin":
+
+                st.session_state.page = "admin"
 
             else:
 
-                st.session_state.user = {
-                    "id": row[0],
-                    "username": row[1],
-                    "role": row[3],
-                    "created_at": row[4]
-                }
+                st.session_state.page = "dashboard"
 
-                if row[3] == "admin":
-
-                    st.session_state.page = "admin"
-
-                else:
-
-                    st.session_state.page = "dashboard"
-
-                st.rerun()
+            st.rerun()
 
         else:
 
@@ -975,7 +907,7 @@ def login_page():
 
 
 # =========================================================
-# REGISTER
+# REGISTER PAGE
 # =========================================================
 
 def register_page():
@@ -990,9 +922,13 @@ def register_page():
         unsafe_allow_html=True
     )
 
-    with st.form("register_form"):
+    with st.form(
+        "register_form"
+    ):
 
-        username = st.text_input("Username")
+        username = st.text_input(
+            "Username"
+        )
 
         password = st.text_input(
             "Password",
@@ -1064,7 +1000,9 @@ def register_page():
         unsafe_allow_html=True
     )
 
-    if st.button("Back to Sign In"):
+    if st.button(
+        "Back to Sign In"
+    ):
 
         st.session_state.page = "login"
 
@@ -1079,16 +1017,14 @@ def delete_account_section():
 
     st.markdown("---")
 
-    st.subheader("⚠️ Account Settings")
+    st.subheader(
+        "⚠️ Account Settings"
+    )
 
     st.warning(
         "Deleting your account will permanently delete "
         "your account and all surveys associated with it."
     )
-
-    if "confirm_delete" not in st.session_state:
-
-        st.session_state.confirm_delete = False
 
     if not st.session_state.confirm_delete:
 
@@ -1107,9 +1043,9 @@ def delete_account_section():
             "Are you sure? This action cannot be undone."
         )
 
-        a, b = st.columns(2)
+        left, right = st.columns(2)
 
-        with a:
+        with left:
 
             if st.button(
                 "Yes, Permanently Delete",
@@ -1117,9 +1053,13 @@ def delete_account_section():
                 use_container_width=True
             ):
 
-                user_id = st.session_state.user["id"]
+                user_id = (
+                    st.session_state.user["id"]
+                )
 
-                delete_user_account(user_id)
+                delete_user_account(
+                    user_id
+                )
 
                 st.session_state.clear()
 
@@ -1127,7 +1067,7 @@ def delete_account_section():
 
                 st.rerun()
 
-        with b:
+        with right:
 
             if st.button(
                 "Cancel",
@@ -1140,7 +1080,7 @@ def delete_account_section():
 
 
 # =========================================================
-# DASHBOARD
+# USER DASHBOARD
 # =========================================================
 
 def dashboard_page():
@@ -1152,11 +1092,15 @@ def dashboard_page():
         f"Welcome, {user['username']}"
     )
 
-    if st.button("Sign Out"):
+    if st.button(
+        "Sign Out"
+    ):
 
         logout()
 
-    surveys = get_surveys(user["id"])
+    surveys = get_surveys(
+        user["id"]
+    )
 
     st.markdown(
         '<div class="card">',
@@ -1212,13 +1156,17 @@ def dashboard_page():
             unsafe_allow_html=True
         )
 
-        st.write(content[0])
+        st.write(
+            content[0]
+        )
 
         st.markdown(
             "**Recommended products:**"
         )
 
-        for product in products_for_stage(stage):
+        for product in products_for_stage(
+            stage
+        ):
 
             st.write(
                 f"• {product[0]} | "
@@ -1235,7 +1183,7 @@ def dashboard_page():
 
 
 # =========================================================
-# SURVEY
+# SURVEY PAGE
 # =========================================================
 
 def survey_page():
@@ -1245,8 +1193,8 @@ def survey_page():
     qid, question, options = QUESTIONS[step]
 
     progress = (
-        (step + 1) /
-        len(QUESTIONS)
+        (step + 1)
+        / len(QUESTIONS)
     )
 
     header(
@@ -1254,7 +1202,9 @@ def survey_page():
         f"Question {step + 1} of {len(QUESTIONS)}"
     )
 
-    st.progress(progress)
+    st.progress(
+        progress
+    )
 
     st.caption(
         f"{int(progress * 100)}% complete"
@@ -1274,7 +1224,9 @@ def survey_page():
         for option in options
     ]
 
-    previous = st.session_state.responses.get(qid)
+    previous = (
+        st.session_state.responses.get(qid)
+    )
 
     selected = st.radio(
         "Choose one:",
@@ -1293,9 +1245,10 @@ def survey_page():
         unsafe_allow_html=True
     )
 
-    a, b, c = st.columns(3)
+    left, middle, right = st.columns(3)
 
-    with a:
+    # PREVIOUS
+    with left:
 
         if st.button(
             "Previous",
@@ -1303,13 +1256,16 @@ def survey_page():
             use_container_width=True
         ):
 
-            st.session_state.responses[qid] = selected
+            if selected is not None:
+
+                st.session_state.responses[qid] = selected
 
             st.session_state.step -= 1
 
             st.rerun()
 
-    with b:
+    # EXIT
+    with middle:
 
         if st.button(
             "Exit",
@@ -1320,7 +1276,8 @@ def survey_page():
 
             st.rerun()
 
-    with c:
+    # NEXT / SUBMIT
+    with right:
 
         label = (
             "Submit Survey"
@@ -1375,7 +1332,7 @@ def survey_page():
 
 
 # =========================================================
-# RESULTS
+# RESULTS PAGE
 # =========================================================
 
 def results_page():
@@ -1417,7 +1374,9 @@ def results_page():
         unsafe_allow_html=True
     )
 
-    st.write(content[0])
+    st.write(
+        content[0]
+    )
 
     st.markdown(
         '</div>',
@@ -1426,6 +1385,7 @@ def results_page():
 
     left, right = st.columns(2)
 
+    # TIPS
     with left:
 
         st.markdown(
@@ -1448,6 +1408,7 @@ def results_page():
             unsafe_allow_html=True
         )
 
+    # OFFER
     with right:
 
         st.markdown(
@@ -1536,14 +1497,19 @@ def results_page():
             why = {
                 "Awareness":
                     "A great discovery pick for your browsing style.",
+
                 "Interest":
                     "Matches your current product-exploration mindset.",
+
                 "Consideration":
                     "Useful for comparing quality, value and reviews.",
+
                 "Intent":
                     "A strong match for someone close to buying.",
+
                 "Purchase":
                     "A solid choice for your purchase-ready profile.",
+
                 "Loyalty":
                     "A great pick for repeat shoppers looking for value."
             }.get(
@@ -1552,7 +1518,8 @@ def results_page():
             )
 
             st.caption(
-                "Why this matches you: " + why
+                "Why this matches you: "
+                + why
             )
 
             st.markdown(
@@ -1560,9 +1527,9 @@ def results_page():
                 unsafe_allow_html=True
             )
 
-    a, b = st.columns(2)
+    left, right = st.columns(2)
 
-    with a:
+    with left:
 
         if st.button(
             "← Dashboard",
@@ -1573,7 +1540,7 @@ def results_page():
 
             st.rerun()
 
-    with b:
+    with right:
 
         if st.button(
             "Retake Survey",
@@ -1601,7 +1568,9 @@ def admin_page():
         "Manage users and survey records"
     )
 
-    if st.button("Sign Out"):
+    if st.button(
+        "Sign Out"
+    ):
 
         logout()
 
@@ -1609,46 +1578,42 @@ def admin_page():
     # USERS
     # =====================================================
 
-    st.subheader("👥 Users")
+    with sqlite3.connect(DB_NAME) as con:
 
-    visible_users = get_visible_users()
+        users = con.execute(
+            """
+            SELECT
+                id,
+                username,
+                created_at
+            FROM users
+            WHERE role='user'
+            ORDER BY id
+            """
+        ).fetchall()
 
-    hidden_users = get_hidden_users()
-
-    st.write(
-        f"Total visible registered users: "
-        f"**{len(visible_users)}**"
+    st.subheader(
+        "👥 Users"
     )
 
-    # -----------------------------------------------------
-    # VISIBLE USERS TABLE
-    # -----------------------------------------------------
+    st.write(
+        f"Total registered users: **{len(users)}**"
+    )
 
-    if visible_users:
+    if users:
 
         user_rows = []
 
-        for user in visible_users:
-
-            user_id = user[0]
-
-            username = user[1]
-
-            created = user[2].replace(
-                "T",
-                " "
-            )[:19]
-
-            predicted_stage = get_latest_stage(
-                user_id
-            )
+        for user in users:
 
             user_rows.append(
                 {
-                    "User ID": user_id,
-                    "Username": username,
-                    "Predicted Stage": predicted_stage,
-                    "Created": created
+                    "User ID": user[0],
+                    "Username": user[1],
+                    "Created": user[2].replace(
+                        "T",
+                        " "
+                    )[:19]
                 }
             )
 
@@ -1658,276 +1623,33 @@ def admin_page():
             hide_index=True
         )
 
-        # -------------------------------------------------
-        # USER MANAGEMENT BUTTONS
-        # -------------------------------------------------
-
-        st.markdown("### Manage Users")
-
-        for user in visible_users:
-
-            user_id = user[0]
-
-            username = user[1]
-
-            with st.container(border=True):
-
-                left, middle, right = st.columns(
-                    [3, 2, 2]
-                )
-
-                with left:
-
-                    st.markdown(
-                        f"**{username}**"
-                    )
-
-                    st.caption(
-                        f"User ID: {user_id}"
-                    )
-
-                with middle:
-
-                    st.write(
-                        "Predicted Stage:"
-                    )
-
-                    st.write(
-                        f"**{get_latest_stage(user_id)}**"
-                    )
-
-                with right:
-
-                    hide_key = (
-                        f"hide_user_{user_id}"
-                    )
-
-                    delete_key = (
-                        f"delete_user_{user_id}"
-                    )
-
-                    if st.button(
-                        "👁️ Hide User",
-                        key=hide_key,
-                        use_container_width=True
-                    ):
-
-                        hide_user(user_id)
-
-                        st.success(
-                            f"{username} has been hidden."
-                        )
-
-                        st.rerun()
-
-                    if st.button(
-                        "🗑️ Delete User",
-                        key=delete_key,
-                        use_container_width=True
-                    ):
-
-                        delete_user_account(
-                            user_id
-                        )
-
-                        st.success(
-                            f"{username} has been deleted."
-                        )
-
-                        st.rerun()
-
-    else:
-
-        st.info(
-            "No visible users found."
-        )
-
-    # =====================================================
-    # HIDDEN USERS
-    # =====================================================
-
-    st.markdown("---")
-
-    st.subheader("🔒 Hidden Users")
-
-    st.write(
-        "Hidden users are protected and are not displayed "
-        "in the normal Users table."
-    )
-
-    # -----------------------------------------------------
-    # PASSWORD PROTECTION
-    # -----------------------------------------------------
-
-    if not st.session_state.hidden_users_unlocked:
-
-        with st.form("hidden_users_password_form"):
-
-            hidden_password = st.text_input(
-                "Enter Hidden Users Password",
-                type="password"
-            )
-
-            unlock = st.form_submit_button(
-                "🔓 Open Hidden Users",
-                use_container_width=True
-            )
-
-        if unlock:
-
-            if hidden_password == HIDDEN_USERS_PASSWORD:
-
-                st.session_state.hidden_users_unlocked = True
-
-                st.success(
-                    "Hidden Users unlocked."
-                )
-
-                st.rerun()
-
-            else:
-
-                st.error(
-                    "Incorrect password."
-                )
-
-    # -----------------------------------------------------
-    # UNLOCKED HIDDEN USERS
-    # -----------------------------------------------------
-
-    else:
-
-        st.success(
-            f"{len(hidden_users)} hidden user(s) found."
-        )
-
-        if st.button(
-            "🔒 Lock Hidden Users",
-            use_container_width=True
-        ):
-
-            st.session_state.hidden_users_unlocked = False
-
-            st.rerun()
-
-        if hidden_users:
-
-            for user in hidden_users:
-
-                user_id = user[0]
-
-                username = user[1]
-
-                created = user[2].replace(
-                    "T",
-                    " "
-                )[:19]
-
-                with st.container(border=True):
-
-                    left, middle, right = st.columns(
-                        [3, 2, 2]
-                    )
-
-                    with left:
-
-                        st.markdown(
-                            f"**{username}**"
-                        )
-
-                        st.caption(
-                            f"User ID: {user_id}"
-                        )
-
-                        st.caption(
-                            f"Created: {created}"
-                        )
-
-                    with middle:
-
-                        st.write(
-                            "Predicted Stage:"
-                        )
-
-                        st.write(
-                            f"**{get_latest_stage(user_id)}**"
-                        )
-
-                    with right:
-
-                        unhide_key = (
-                            f"unhide_user_{user_id}"
-                        )
-
-                        delete_hidden_key = (
-                            f"delete_hidden_user_{user_id}"
-                        )
-
-                        if st.button(
-                            "👁️ Unhide User",
-                            key=unhide_key,
-                            use_container_width=True
-                        ):
-
-                            unhide_user(
-                                user_id
-                            )
-
-                            st.success(
-                                f"{username} has been unhidden."
-                            )
-
-                            st.rerun()
-
-                        if st.button(
-                            "🗑️ Delete User",
-                            key=delete_hidden_key,
-                            use_container_width=True
-                        ):
-
-                            delete_user_account(
-                                user_id
-                            )
-
-                            st.success(
-                                f"{username} has been permanently deleted."
-                            )
-
-                            st.rerun()
-
-        else:
-
-            st.info(
-                "There are no hidden users."
-            )
-
     # =====================================================
     # SURVEY MANAGEMENT
     # =====================================================
 
     st.markdown("---")
 
-    st.subheader("📋 Survey Management")
+    st.subheader(
+        "📋 Survey Management"
+    )
 
     all_surveys = get_all_surveys()
-
-    # Visible survey:
-    # survey[2] = user hidden status
-    # survey[7] = survey hidden status
 
     visible_surveys = [
         survey
         for survey in all_surveys
-        if survey[2] == 0
-        and survey[7] == 0
+        if survey[6] == 0
     ]
 
     hidden_surveys = [
         survey
         for survey in all_surveys
-        if survey[2] == 0
-        and survey[7] == 1
+        if survey[6] == 1
     ]
+
+    # =====================================================
+    # STATISTICS
+    # =====================================================
 
     counts = {
         stage: 0
@@ -1936,9 +1658,9 @@ def admin_page():
 
     for survey in visible_surveys:
 
-        if survey[4] in counts:
+        if survey[3] in counts:
 
-            counts[survey[4]] += 1
+            counts[survey[3]] += 1
 
     top_stage = (
         max(
@@ -1949,31 +1671,31 @@ def admin_page():
         else "—"
     )
 
-    a, b, c, d = st.columns(4)
+    col1, col2, col3, col4 = st.columns(4)
 
-    a.metric(
+    col1.metric(
         "Visible Surveys",
         len(visible_surveys)
     )
 
-    b.metric(
+    col2.metric(
         "Hidden Surveys",
         len(hidden_surveys)
     )
 
-    c.metric(
+    col3.metric(
         "Total Surveys",
         len(all_surveys)
     )
 
-    d.metric(
+    col4.metric(
         "Most Recorded Stage",
         top_stage
     )
 
-    # -----------------------------------------------------
+    # =====================================================
     # FILTER
-    # -----------------------------------------------------
+    # =====================================================
 
     chosen = st.selectbox(
         "Filter visible surveys by stage",
@@ -1987,14 +1709,16 @@ def admin_page():
         filtered_surveys = [
             survey
             for survey in visible_surveys
-            if survey[4] == chosen
+            if survey[3] == chosen
         ]
 
-    # -----------------------------------------------------
+    # =====================================================
     # VISIBLE SURVEYS
-    # -----------------------------------------------------
+    # =====================================================
 
-    st.markdown("### Visible Surveys")
+    st.markdown(
+        "### Visible Surveys"
+    )
 
     if not filtered_surveys:
 
@@ -2007,14 +1731,13 @@ def admin_page():
         for survey in filtered_surveys:
 
             survey_id = survey[0]
-
             username = survey[1]
+            timestamp = survey[2]
+            stage = survey[3]
 
-            timestamp = survey[3]
-
-            stage = survey[4]
-
-            with st.container(border=True):
+            with st.container(
+                border=True
+            ):
 
                 left, middle, right = st.columns(
                     [3, 3, 2]
@@ -2033,8 +1756,11 @@ def admin_page():
                 with middle:
 
                     st.write(
-                        f"Date: "
-                        f"{timestamp.replace('T', ' ')[:19]}"
+                        "Date: "
+                        + timestamp.replace(
+                            "T",
+                            " "
+                        )[:19]
                     )
 
                     st.write(
@@ -2045,7 +1771,7 @@ def admin_page():
 
                     if st.button(
                         "👁️ Hide",
-                        key=f"hide_survey_{survey_id}",
+                        key=f"hide_{survey_id}",
                         use_container_width=True
                     ):
 
@@ -2057,7 +1783,7 @@ def admin_page():
 
                     if st.button(
                         "🗑️ Delete",
-                        key=f"delete_survey_{survey_id}",
+                        key=f"delete_{survey_id}",
                         use_container_width=True
                     ):
 
@@ -2067,14 +1793,14 @@ def admin_page():
 
                         st.rerun()
 
-    # -----------------------------------------------------
+    # =====================================================
     # HIDDEN SURVEYS
-    # -----------------------------------------------------
+    # =====================================================
 
     st.markdown("---")
 
     st.markdown(
-        "### 👁️ Hidden Surveys"
+        "### 👁️‍🗨️ Hidden Surveys"
     )
 
     if not hidden_surveys:
@@ -2088,14 +1814,13 @@ def admin_page():
         for survey in hidden_surveys:
 
             survey_id = survey[0]
-
             username = survey[1]
+            timestamp = survey[2]
+            stage = survey[3]
 
-            timestamp = survey[3]
-
-            stage = survey[4]
-
-            with st.container(border=True):
+            with st.container(
+                border=True
+            ):
 
                 left, middle, right = st.columns(
                     [3, 3, 2]
@@ -2114,8 +1839,11 @@ def admin_page():
                 with middle:
 
                     st.write(
-                        f"Date: "
-                        f"{timestamp.replace('T', ' ')[:19]}"
+                        "Date: "
+                        + timestamp.replace(
+                            "T",
+                            " "
+                        )[:19]
                     )
 
                     st.write(
@@ -2126,7 +1854,7 @@ def admin_page():
 
                     if st.button(
                         "👁️ Unhide",
-                        key=f"unhide_survey_{survey_id}",
+                        key=f"unhide_{survey_id}",
                         use_container_width=True
                     ):
 
@@ -2138,7 +1866,7 @@ def admin_page():
 
                     if st.button(
                         "🗑️ Delete",
-                        key=f"delete_hidden_survey_{survey_id}",
+                        key=f"delete_hidden_{survey_id}",
                         use_container_width=True
                     ):
 
