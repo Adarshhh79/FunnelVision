@@ -149,18 +149,102 @@ QUESTIONS = [
 # =========================================================
 
 PRODUCTS = [
-    ("Wireless Noise-Cancelling Headphones", "Electronics", 199.99, 4.7, 2340, ["trending", "bestseller"]),
-    ("Smart Fitness Watch Pro", "Wearables", 149.99, 4.5, 1876, ["new", "trending"]),
-    ("Premium Leather Backpack", "Accessories", 89.99, 4.8, 956, ["bestseller"]),
-    ("Portable Bluetooth Speaker", "Electronics", 59.99, 4.3, 3210, ["trending", "value"]),
-    ("Organic Cotton T-Shirt Pack", "Clothing", 39.99, 4.6, 4521, ["value", "bestseller"]),
-    ("Stainless Steel Water Bottle", "Lifestyle", 24.99, 4.4, 5670, ["value"]),
-    ("4K Ultra HD Webcam", "Electronics", 129.99, 4.2, 890, ["new"]),
-    ("Ergonomic Office Chair", "Furniture", 349.99, 4.9, 1234, ["bestseller", "premium"]),
-    ("Scented Candle Collection Set", "Home", 34.99, 4.7, 2100, ["trending"]),
-    ("Wireless Charging Pad", "Electronics", 29.99, 4.1, 4300, ["value", "trending"]),
-    ("Running Shoes Ultra Light", "Footwear", 119.99, 4.6, 1670, ["new", "bestseller"]),
-    ("Smart Home Hub Controller", "Smart Home", 79.99, 4.3, 980, ["new"])
+    (
+        "Wireless Noise-Cancelling Headphones",
+        "Electronics",
+        199.99,
+        4.7,
+        2340,
+        ["trending", "bestseller"]
+    ),
+    (
+        "Smart Fitness Watch Pro",
+        "Wearables",
+        149.99,
+        4.5,
+        1876,
+        ["new", "trending"]
+    ),
+    (
+        "Premium Leather Backpack",
+        "Accessories",
+        89.99,
+        4.8,
+        956,
+        ["bestseller"]
+    ),
+    (
+        "Portable Bluetooth Speaker",
+        "Electronics",
+        59.99,
+        4.3,
+        3210,
+        ["trending", "value"]
+    ),
+    (
+        "Organic Cotton T-Shirt Pack",
+        "Clothing",
+        39.99,
+        4.6,
+        4521,
+        ["value", "bestseller"]
+    ),
+    (
+        "Stainless Steel Water Bottle",
+        "Lifestyle",
+        24.99,
+        4.4,
+        5670,
+        ["value"]
+    ),
+    (
+        "4K Ultra HD Webcam",
+        "Electronics",
+        129.99,
+        4.2,
+        890,
+        ["new"]
+    ),
+    (
+        "Ergonomic Office Chair",
+        "Furniture",
+        349.99,
+        4.9,
+        1234,
+        ["bestseller", "premium"]
+    ),
+    (
+        "Scented Candle Collection Set",
+        "Home",
+        34.99,
+        4.7,
+        2100,
+        ["trending"]
+    ),
+    (
+        "Wireless Charging Pad",
+        "Electronics",
+        29.99,
+        4.1,
+        4300,
+        ["value", "trending"]
+    ),
+    (
+        "Running Shoes Ultra Light",
+        "Footwear",
+        119.99,
+        4.6,
+        1670,
+        ["new", "bestseller"]
+    ),
+    (
+        "Smart Home Hub Controller",
+        "Smart Home",
+        79.99,
+        4.3,
+        980,
+        ["new"]
+    )
 ]
 
 # =========================================================
@@ -178,6 +262,7 @@ STAGE_CONTENT = {
         ["trending", "new"],
         "Welcome Explorer - Get 10% off your first order with code WELCOME10"
     ),
+
     "Interest": (
         "You have shown interest in certain products.",
         [
@@ -188,6 +273,7 @@ STAGE_CONTENT = {
         ["bestseller", "trending"],
         "Curious Shopper - Free shipping on your first purchase this month"
     ),
+
     "Consideration": (
         "You are actively comparing options.",
         [
@@ -198,6 +284,7 @@ STAGE_CONTENT = {
         ["bestseller", "value"],
         "Smart Buyer - Price match guarantee plus an extra 5% off"
     ),
+
     "Intent": (
         "You are almost ready to buy.",
         [
@@ -208,6 +295,7 @@ STAGE_CONTENT = {
         ["trending", "value", "bestseller"],
         "Ready to Buy - Extra 15% off everything in your cart"
     ),
+
     "Purchase": (
         "You have made a purchase decision.",
         [
@@ -218,6 +306,7 @@ STAGE_CONTENT = {
         ["bestseller", "premium"],
         "New Customer - Earn double reward points on your first completed order"
     ),
+
     "Loyalty": (
         "You are a valued repeat customer.",
         [
@@ -240,6 +329,7 @@ def setup_db():
 
         cur = con.cursor()
 
+        # USERS TABLE
         cur.execute("""
             CREATE TABLE IF NOT EXISTS users(
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -250,6 +340,7 @@ def setup_db():
             )
         """)
 
+        # SURVEYS TABLE
         cur.execute("""
             CREATE TABLE IF NOT EXISTS surveys(
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -263,7 +354,11 @@ def setup_db():
             )
         """)
 
-        # Add hidden column if an older database already exists
+        # -------------------------------------------------
+        # DATABASE MIGRATION
+        # Adds hidden column to older databases
+        # -------------------------------------------------
+
         columns = [
             row[1]
             for row in cur.execute(
@@ -272,21 +367,24 @@ def setup_db():
         ]
 
         if "hidden" not in columns:
+
             cur.execute(
                 "ALTER TABLE surveys ADD COLUMN hidden INTEGER DEFAULT 0"
             )
 
-        cur.execute("SELECT COUNT(*) FROM users")
+        # -------------------------------------------------
+        # CREATE ADMIN IF DATABASE HAS NO ADMIN
+        # -------------------------------------------------
 
-        if cur.fetchone()[0] == 0:
+        admin_exists = cur.execute(
+            "SELECT COUNT(*) FROM users WHERE role='admin'"
+        ).fetchone()[0]
+
+        if admin_exists == 0:
 
             now = datetime.now()
 
-            sample_users = [
-                ("admin", "admin123", "admin", now - timedelta(days=30))
-            ]
-
-            for username, password, role, created in sample_users:
+            try:
 
                 cur.execute(
                     """
@@ -299,12 +397,15 @@ def setup_db():
                     VALUES(?,?,?,?)
                     """,
                     (
-                        username,
-                        password,
-                        role,
-                        created.isoformat()
+                        "admin",
+                        "admin123",
+                        "admin",
+                        (now - timedelta(days=30)).isoformat()
                     )
                 )
+
+            except sqlite3.IntegrityError:
+                pass
 
         con.commit()
 
@@ -356,9 +457,16 @@ def get_surveys(user_id):
 
         return con.execute(
             """
-            SELECT id,timestamp,responses,stage,scores,hidden
+            SELECT
+                id,
+                timestamp,
+                responses,
+                stage,
+                scores,
+                hidden
             FROM surveys
-            WHERE user_id=? AND hidden=0
+            WHERE user_id=?
+            AND hidden=0
             ORDER BY id
             """,
             (user_id,)
@@ -390,18 +498,20 @@ def save_survey(user_id, responses, stage, scores):
             )
         )
 
+        con.commit()
+
 
 def delete_user_account(user_id):
 
     with sqlite3.connect(DB_NAME) as con:
 
-        # Delete all surveys belonging to this user
+        # Delete all surveys of this user
         con.execute(
             "DELETE FROM surveys WHERE user_id=?",
             (user_id,)
         )
 
-        # Delete the user
+        # Delete user account
         con.execute(
             "DELETE FROM users WHERE id=?",
             (user_id,)
@@ -551,12 +661,14 @@ def init_state():
         "user": None,
         "responses": {},
         "step": 0,
-        "last_result": None
+        "last_result": None,
+        "confirm_delete": False
     }
 
     for key, value in defaults.items():
 
         if key not in st.session_state:
+
             st.session_state[key] = value
 
 
@@ -687,7 +799,7 @@ def header(title, subtitle=None):
 
 
 # =========================================================
-# LOGIN
+# LOGIN PAGE
 # =========================================================
 
 def login_page():
@@ -706,7 +818,9 @@ def login_page():
 
     with st.form("login_form"):
 
-        username = st.text_input("Username")
+        username = st.text_input(
+            "Username"
+        )
 
         password = st.text_input(
             "Password",
@@ -727,7 +841,1047 @@ def login_page():
 
         if row:
 
+            # IMPORTANT:
+            # The dictionary is properly closed here.
+
             st.session_state.user = {
                 "id": row[0],
                 "username": row[1],
-  
+                "role": row[3],
+                "created_at": row[4]
+            }
+
+            if row[3] == "admin":
+
+                st.session_state.page = "admin"
+
+            else:
+
+                st.session_state.page = "dashboard"
+
+            st.rerun()
+
+        else:
+
+            st.error(
+                "Invalid username or password."
+            )
+
+    if st.button(
+        "Create an account",
+        use_container_width=True
+    ):
+
+        st.session_state.page = "register"
+
+        st.rerun()
+
+    st.markdown(
+        '</div>',
+        unsafe_allow_html=True
+    )
+
+
+# =========================================================
+# REGISTER PAGE
+# =========================================================
+
+def register_page():
+
+    header(
+        "Create Account",
+        "Join FunnelVision and discover your shopping profile"
+    )
+
+    st.markdown(
+        '<div class="card">',
+        unsafe_allow_html=True
+    )
+
+    with st.form("register_form"):
+
+        username = st.text_input(
+            "Username"
+        )
+
+        password = st.text_input(
+            "Password",
+            type="password"
+        )
+
+        confirm = st.text_input(
+            "Confirm Password",
+            type="password"
+        )
+
+        submitted = st.form_submit_button(
+            "Create Account & Start Survey",
+            use_container_width=True
+        )
+
+    if submitted:
+
+        if len(username.strip()) < 3:
+
+            st.error(
+                "Username must be at least 3 characters."
+            )
+
+        elif len(password) < 4:
+
+            st.error(
+                "Password must be at least 4 characters."
+            )
+
+        elif password != confirm:
+
+            st.error(
+                "Passwords do not match."
+            )
+
+        else:
+
+            try:
+
+                uid = register_user(
+                    username.strip(),
+                    password
+                )
+
+                st.session_state.user = {
+                    "id": uid,
+                    "username": username.strip(),
+                    "role": "user",
+                    "created_at": datetime.now().isoformat()
+                }
+
+                st.session_state.responses = {}
+
+                st.session_state.step = 0
+
+                st.session_state.page = "survey"
+
+                st.rerun()
+
+            except sqlite3.IntegrityError:
+
+                st.error(
+                    "Username already exists."
+                )
+
+    st.markdown(
+        '</div>',
+        unsafe_allow_html=True
+    )
+
+    if st.button(
+        "Back to Sign In"
+    ):
+
+        st.session_state.page = "login"
+
+        st.rerun()
+
+
+# =========================================================
+# DELETE ACCOUNT
+# =========================================================
+
+def delete_account_section():
+
+    st.markdown("---")
+
+    st.subheader(
+        "⚠️ Account Settings"
+    )
+
+    st.warning(
+        "Deleting your account will permanently delete "
+        "your account and all surveys associated with it."
+    )
+
+    if not st.session_state.confirm_delete:
+
+        if st.button(
+            "Delete My Account",
+            type="secondary"
+        ):
+
+            st.session_state.confirm_delete = True
+
+            st.rerun()
+
+    else:
+
+        st.error(
+            "Are you sure? This action cannot be undone."
+        )
+
+        left, right = st.columns(2)
+
+        with left:
+
+            if st.button(
+                "Yes, Permanently Delete",
+                type="primary",
+                use_container_width=True
+            ):
+
+                user_id = st.session_state.user["id"]
+
+                delete_user_account(user_id)
+
+                st.session_state.clear()
+
+                init_state()
+
+                st.rerun()
+
+        with right:
+
+            if st.button(
+                "Cancel",
+                use_container_width=True
+            ):
+
+                st.session_state.confirm_delete = False
+
+                st.rerun()
+
+
+# =========================================================
+# USER DASHBOARD
+# =========================================================
+
+def dashboard_page():
+
+    user = st.session_state.user
+
+    header(
+        "FunnelVision",
+        f"Welcome, {user['username']}"
+    )
+
+    if st.button(
+        "Sign Out"
+    ):
+
+        logout()
+
+    surveys = get_surveys(
+        user["id"]
+    )
+
+    st.markdown(
+        '<div class="card">',
+        unsafe_allow_html=True
+    )
+
+    st.subheader(
+        "Your Shopping Funnel Profile"
+    )
+
+    st.write(
+        f"{len(surveys)} survey(s) completed"
+    )
+
+    button_text = (
+        "Retake Survey"
+        if surveys
+        else "Begin Survey"
+    )
+
+    if st.button(
+        button_text,
+        type="primary"
+    ):
+
+        st.session_state.responses = {}
+
+        st.session_state.step = 0
+
+        st.session_state.page = "survey"
+
+        st.rerun()
+
+    st.markdown(
+        '</div>',
+        unsafe_allow_html=True
+    )
+
+    if surveys:
+
+        stage = surveys[-1][3]
+
+        content = STAGE_CONTENT[stage]
+
+        st.markdown(
+            '<div class="hero">',
+            unsafe_allow_html=True
+        )
+
+        st.markdown(
+            f"### Latest Stage: "
+            f"<span class='stage'>{stage}</span>",
+            unsafe_allow_html=True
+        )
+
+        st.write(
+            content[0]
+        )
+
+        st.markdown(
+            "**Recommended products:**"
+        )
+
+        for product in products_for_stage(stage):
+
+            st.write(
+                f"• {product[0]} | "
+                f"${product[2]:.2f} | "
+                f"⭐ {product[3]}"
+            )
+
+        st.markdown(
+            '</div>',
+            unsafe_allow_html=True
+        )
+
+    delete_account_section()
+
+
+# =========================================================
+# SURVEY PAGE
+# =========================================================
+
+def survey_page():
+
+    step = st.session_state.step
+
+    qid, question, options = QUESTIONS[step]
+
+    progress = (
+        (step + 1) /
+        len(QUESTIONS)
+    )
+
+    header(
+        "Survey",
+        f"Question {step + 1} of {len(QUESTIONS)}"
+    )
+
+    st.progress(
+        progress
+    )
+
+    st.caption(
+        f"{int(progress * 100)}% complete"
+    )
+
+    st.markdown(
+        '<div class="card">',
+        unsafe_allow_html=True
+    )
+
+    st.markdown(
+        f"### {question}"
+    )
+
+    labels = [
+        option[0]
+        for option in options
+    ]
+
+    previous = st.session_state.responses.get(
+        qid
+    )
+
+    selected = st.radio(
+        "Choose one:",
+        range(len(labels)),
+        format_func=lambda i: labels[i],
+        index=(
+            previous
+            if previous is not None
+            else None
+        ),
+        key=f"answer_{step}"
+    )
+
+    st.markdown(
+        '</div>',
+        unsafe_allow_html=True
+    )
+
+    left, middle, right = st.columns(3)
+
+    # PREVIOUS
+    with left:
+
+        if st.button(
+            "Previous",
+            disabled=(step == 0),
+            use_container_width=True
+        ):
+
+            if selected is not None:
+
+                st.session_state.responses[qid] = selected
+
+            st.session_state.step -= 1
+
+            st.rerun()
+
+    # EXIT
+    with middle:
+
+        if st.button(
+            "Exit",
+            use_container_width=True
+        ):
+
+            st.session_state.page = "dashboard"
+
+            st.rerun()
+
+    # NEXT / SUBMIT
+    with right:
+
+        label = (
+            "Submit Survey"
+            if step == len(QUESTIONS) - 1
+            else "Next"
+        )
+
+        if st.button(
+            label,
+            type="primary",
+            use_container_width=True
+        ):
+
+            if selected is None:
+
+                st.warning(
+                    "Please select an option."
+                )
+
+            else:
+
+                st.session_state.responses[qid] = selected
+
+                if step < len(QUESTIONS) - 1:
+
+                    st.session_state.step += 1
+
+                    st.rerun()
+
+                else:
+
+                    stage, scores, strength = calculate(
+                        st.session_state.responses
+                    )
+
+                    save_survey(
+                        st.session_state.user["id"],
+                        st.session_state.responses,
+                        stage,
+                        scores
+                    )
+
+                    st.session_state.last_result = (
+                        stage,
+                        scores,
+                        strength
+                    )
+
+                    st.session_state.page = "results"
+
+                    st.rerun()
+
+
+# =========================================================
+# RESULTS PAGE
+# =========================================================
+
+def results_page():
+
+    stage, scores, match_strength = (
+        st.session_state.last_result
+    )
+
+    content = STAGE_CONTENT[stage]
+
+    header(
+        "Your Shopping Profile",
+        "Your strongest funnel stage is ready"
+    )
+
+    st.markdown(
+        '<div class="hero">',
+        unsafe_allow_html=True
+    )
+
+    st.caption(
+        "🏆 STRONGEST FUNNEL STAGE"
+    )
+
+    st.markdown(
+        f'<div class="stage">{stage}</div>',
+        unsafe_allow_html=True
+    )
+
+    st.write(
+        f"**Your score:** "
+        f"{scores[stage]:.1f}"
+    )
+
+    st.markdown(
+        f'<div class="metric">'
+        f'Match Strength: {match_strength:.0f}%'
+        f'</div>',
+        unsafe_allow_html=True
+    )
+
+    st.write(
+        content[0]
+    )
+
+    st.markdown(
+        '</div>',
+        unsafe_allow_html=True
+    )
+
+    left, right = st.columns(2)
+
+    # TIPS
+    with left:
+
+        st.markdown(
+            '<div class="tip">',
+            unsafe_allow_html=True
+        )
+
+        st.subheader(
+            "💡 Personalized Tips"
+        )
+
+        for tip in content[1]:
+
+            st.write(
+                "✓ " + tip
+            )
+
+        st.markdown(
+            '</div>',
+            unsafe_allow_html=True
+        )
+
+    # OFFER
+    with right:
+
+        st.markdown(
+            '<div class="offer">',
+            unsafe_allow_html=True
+        )
+
+        st.subheader(
+            "🎁 Special Offer"
+        )
+
+        st.markdown(
+            f"**{content[3]}**"
+        )
+
+        st.markdown(
+            '</div>',
+            unsafe_allow_html=True
+        )
+
+    st.subheader(
+        "🛍 Picked For You"
+    )
+
+    st.caption(
+        "Products selected using your strongest shopping stage"
+    )
+
+    columns = st.columns(2)
+
+    for i, product in enumerate(
+        products_for_stage(stage)
+    ):
+
+        name, category, price, rating, reviews, tags = product
+
+        if i == 0:
+
+            badge = "BEST MATCH"
+
+        elif "trending" in tags:
+
+            badge = "TRENDING"
+
+        elif "value" in tags:
+
+            badge = "BEST VALUE"
+
+        elif rating >= 4.7:
+
+            badge = "TOP RATED"
+
+        else:
+
+            badge = "RECOMMENDED"
+
+        with columns[i % 2]:
+
+            st.markdown(
+                '<div class="product">',
+                unsafe_allow_html=True
+            )
+
+            st.markdown(
+                f'<span class="badge">{badge}</span>',
+                unsafe_allow_html=True
+            )
+
+            st.markdown(
+                f"### 🛍️ {name}"
+            )
+
+            st.caption(
+                category.upper()
+            )
+
+            st.write(
+                f"⭐ {rating:.1f} • "
+                f"{reviews:,} reviews"
+            )
+
+            st.markdown(
+                f"**${price:.2f}**"
+            )
+
+            why = {
+                "Awareness":
+                    "A great discovery pick for your browsing style.",
+
+                "Interest":
+                    "Matches your current product-exploration mindset.",
+
+                "Consideration":
+                    "Useful for comparing quality, value and reviews.",
+
+                "Intent":
+                    "A strong match for someone close to buying.",
+
+                "Purchase":
+                    "A solid choice for your purchase-ready profile.",
+
+                "Loyalty":
+                    "A great pick for repeat shoppers looking for value."
+            }.get(
+                stage,
+                "Selected based on your shopping profile."
+            )
+
+            st.caption(
+                "Why this matches you: " + why
+            )
+
+            st.markdown(
+                '</div>',
+                unsafe_allow_html=True
+            )
+
+    left, right = st.columns(2)
+
+    with left:
+
+        if st.button(
+            "← Dashboard",
+            use_container_width=True
+        ):
+
+            st.session_state.page = "dashboard"
+
+            st.rerun()
+
+    with right:
+
+        if st.button(
+            "Retake Survey",
+            type="primary",
+            use_container_width=True
+        ):
+
+            st.session_state.responses = {}
+
+            st.session_state.step = 0
+
+            st.session_state.page = "survey"
+
+            st.rerun()
+
+
+# =========================================================
+# ADMIN DASHBOARD
+# =========================================================
+
+def admin_page():
+
+    header(
+        "Admin Dashboard",
+        "Manage users and survey records"
+    )
+
+    if st.button(
+        "Sign Out"
+    ):
+
+        logout()
+
+    # =====================================================
+    # USERS
+    # =====================================================
+
+    with sqlite3.connect(DB_NAME) as con:
+
+        users = con.execute(
+            """
+            SELECT
+                id,
+                username,
+                created_at
+            FROM users
+            WHERE role='user'
+            ORDER BY id
+            """
+        ).fetchall()
+
+    st.subheader(
+        "👥 Users"
+    )
+
+    st.write(
+        f"Total registered users: **{len(users)}**"
+    )
+
+    if users:
+
+        user_rows = []
+
+        for user in users:
+
+            user_rows.append(
+                {
+                    "User ID": user[0],
+                    "Username": user[1],
+                    "Created": user[2].replace(
+                        "T",
+                        " "
+                    )[:19]
+                }
+            )
+
+        st.dataframe(
+            user_rows,
+            use_container_width=True,
+            hide_index=True
+        )
+
+    # =====================================================
+    # SURVEY MANAGEMENT
+    # =====================================================
+
+    st.markdown("---")
+
+    st.subheader(
+        "📋 Survey Management"
+    )
+
+    all_surveys = get_all_surveys()
+
+    visible_surveys = [
+        survey
+        for survey in all_surveys
+        if survey[6] == 0
+    ]
+
+    hidden_surveys = [
+        survey
+        for survey in all_surveys
+        if survey[6] == 1
+    ]
+
+    # =====================================================
+    # STATISTICS
+    # =====================================================
+
+    counts = {
+        stage: 0
+        for stage in STAGES
+    }
+
+    for survey in visible_surveys:
+
+        if survey[3] in counts:
+
+            counts[survey[3]] += 1
+
+    top_stage = (
+        max(
+            STAGES,
+            key=lambda stage: counts[stage]
+        )
+        if visible_surveys
+        else "—"
+    )
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    col1.metric(
+        "Visible Surveys",
+        len(visible_surveys)
+    )
+
+    col2.metric(
+        "Hidden Surveys",
+        len(hidden_surveys)
+    )
+
+    col3.metric(
+        "Total Surveys",
+        len(all_surveys)
+    )
+
+    col4.metric(
+        "Most Recorded Stage",
+        top_stage
+    )
+
+    # =====================================================
+    # FILTER
+    # =====================================================
+
+    chosen = st.selectbox(
+        "Filter visible surveys by stage",
+        ["All Stages"] + STAGES
+    )
+
+    filtered_surveys = visible_surveys
+
+    if chosen != "All Stages":
+
+        filtered_surveys = [
+            survey
+            for survey in visible_surveys
+            if survey[3] == chosen
+        ]
+
+    # =====================================================
+    # VISIBLE SURVEYS
+    # =====================================================
+
+    st.markdown(
+        "### Visible Surveys"
+    )
+
+    if not filtered_surveys:
+
+        st.info(
+            "There are no visible surveys."
+        )
+
+    else:
+
+        for survey in filtered_surveys:
+
+            survey_id = survey[0]
+            username = survey[1]
+            timestamp = survey[2]
+            stage = survey[3]
+
+            with st.container(
+                border=True
+            ):
+
+                left, middle, right = st.columns(
+                    [3, 3, 2]
+                )
+
+                with left:
+
+                    st.markdown(
+                        f"**Survey #{survey_id}**"
+                    )
+
+                    st.write(
+                        f"User: **{username}**"
+                    )
+
+                with middle:
+
+                    st.write(
+                        "Date: "
+                        + timestamp.replace(
+                            "T",
+                            " "
+                        )[:19]
+                    )
+
+                    st.write(
+                        f"Stage: **{stage}**"
+                    )
+
+                with right:
+
+                    if st.button(
+                        "👁️ Hide",
+                        key=f"hide_{survey_id}",
+                        use_container_width=True
+                    ):
+
+                        hide_survey(
+                            survey_id
+                        )
+
+                        st.rerun()
+
+                    if st.button(
+                        "🗑️ Delete",
+                        key=f"delete_{survey_id}",
+                        use_container_width=True
+                    ):
+
+                        delete_survey(
+                            survey_id
+                        )
+
+                        st.rerun()
+
+    # =====================================================
+    # HIDDEN SURVEYS
+    # =====================================================
+
+    st.markdown("---")
+
+    st.markdown(
+        "### 👁️‍🗨️ Hidden Surveys"
+    )
+
+    if not hidden_surveys:
+
+        st.info(
+            "There are no hidden surveys."
+        )
+
+    else:
+
+        for survey in hidden_surveys:
+
+            survey_id = survey[0]
+            username = survey[1]
+            timestamp = survey[2]
+            stage = survey[3]
+
+            with st.container(
+                border=True
+            ):
+
+                left, middle, right = st.columns(
+                    [3, 3, 2]
+                )
+
+                with left:
+
+                    st.markdown(
+                        f"**Survey #{survey_id}**"
+                    )
+
+                    st.write(
+                        f"User: **{username}**"
+                    )
+
+                with middle:
+
+                    st.write(
+                        "Date: "
+                        + timestamp.replace(
+                            "T",
+                            " "
+                        )[:19]
+                    )
+
+                    st.write(
+                        f"Stage: **{stage}**"
+                    )
+
+                with right:
+
+                    if st.button(
+                        "👁️ Unhide",
+                        key=f"unhide_{survey_id}",
+                        use_container_width=True
+                    ):
+
+                        unhide_survey(
+                            survey_id
+                        )
+
+                        st.rerun()
+
+                    if st.button(
+                        "🗑️ Delete",
+                        key=f"delete_hidden_{survey_id}",
+                        use_container_width=True
+                    ):
+
+                        delete_survey(
+                            survey_id
+                        )
+
+                        st.rerun()
+
+
+# =========================================================
+# START APPLICATION
+# =========================================================
+
+load_css()
+
+setup_db()
+
+init_state()
+
+if st.session_state.user is None:
+
+    if st.session_state.page == "register":
+
+        register_page()
+
+    else:
+
+        login_page()
+
+else:
+
+    if st.session_state.user["role"] == "admin":
+
+        admin_page()
+
+    elif st.session_state.page == "dashboard":
+
+        dashboard_page()
+
+    elif st.session_state.page == "survey":
+
+        survey_page()
+
+    elif st.session_state.page == "results":
+
+        results_page()
+
+    else:
+
+        dashboard_page()
