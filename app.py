@@ -24,9 +24,9 @@ DB_NAME = "funnelvision.db"
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "admin123"
 
-# This is a ONE-TIME database reset version.
-# Change this only when you intentionally want another fresh reset.
-DATABASE_VERSION = "fresh_start_v4"
+# One-time fresh database reset.
+# This version will clear the old database once.
+DATABASE_VERSION = "fresh_start_v5"
 
 STAGES = [
     "Awareness",
@@ -156,23 +156,23 @@ QUESTIONS = [
 
 
 # ============================================================
-# PRODUCTS
+# PRODUCTS AND PRICES
 # ============================================================
 
-PRODUCTS = [
-    "Wireless Noise-Cancelling Headphones",
-    "Smart Fitness Watch Pro",
-    "Premium Leather Backpack",
-    "Portable Bluetooth Speaker",
-    "Organic Cotton T-Shirt Pack",
-    "Stainless Steel Water Bottle",
-    "4K Ultra HD Webcam",
-    "Ergonomic Office Chair",
-    "Scented Candle Collection Set",
-    "Wireless Charging Pad",
-    "Running Shoes Ultra Light",
-    "Smart Home Hub Controller"
-]
+PRODUCTS = {
+    "Wireless Noise-Cancelling Headphones": 4999,
+    "Smart Fitness Watch Pro": 3499,
+    "Premium Leather Backpack": 2499,
+    "Portable Bluetooth Speaker": 1999,
+    "Organic Cotton T-Shirt Pack": 1299,
+    "Stainless Steel Water Bottle": 799,
+    "4K Ultra HD Webcam": 3999,
+    "Ergonomic Office Chair": 8999,
+    "Scented Candle Collection Set": 1499,
+    "Wireless Charging Pad": 999,
+    "Running Shoes Ultra Light": 2999,
+    "Smart Home Hub Controller": 4499
+}
 
 
 # ============================================================
@@ -377,7 +377,7 @@ def setup_db():
         cur = con.cursor()
 
         # ----------------------------------------------------
-        # Settings table
+        # SETTINGS TABLE
         # ----------------------------------------------------
 
         cur.execute(
@@ -390,7 +390,7 @@ def setup_db():
         )
 
         # ----------------------------------------------------
-        # Check current database version
+        # CHECK DATABASE VERSION
         # ----------------------------------------------------
 
         cur.execute(
@@ -405,14 +405,12 @@ def setup_db():
         version_exists = cur.fetchone()
 
         # ----------------------------------------------------
-        # FRESH DATABASE RESET
+        # ONE-TIME FRESH DATABASE RESET
         # ----------------------------------------------------
 
         if version_exists is None:
 
-            # Delete old survey table first because it
-            # references the users table.
-
+            # Delete surveys first because they reference users.
             cur.execute(
                 "DROP TABLE IF EXISTS surveys"
             )
@@ -422,7 +420,7 @@ def setup_db():
             )
 
             # ------------------------------------------------
-            # CREATE CLEAN USERS TABLE
+            # CLEAN USERS TABLE
             # ------------------------------------------------
 
             cur.execute(
@@ -438,7 +436,7 @@ def setup_db():
             )
 
             # ------------------------------------------------
-            # CREATE CLEAN SURVEYS TABLE
+            # CLEAN SURVEYS TABLE
             # ------------------------------------------------
 
             cur.execute(
@@ -459,7 +457,7 @@ def setup_db():
             )
 
             # ------------------------------------------------
-            # CREATE FRESH ADMIN ACCOUNT
+            # CREATE FRESH ADMIN
             # ------------------------------------------------
 
             cur.execute(
@@ -481,7 +479,7 @@ def setup_db():
             )
 
             # ------------------------------------------------
-            # SAVE DATABASE VERSION
+            # MARK RESET AS COMPLETE
             # ------------------------------------------------
 
             cur.execute(
@@ -536,7 +534,7 @@ def setup_db():
             )
 
             # ------------------------------------------------
-            # Make sure admin exists
+            # MAKE SURE ADMIN EXISTS
             # ------------------------------------------------
 
             cur.execute(
@@ -650,7 +648,7 @@ def authenticate(username, password):
 
 
 # ============================================================
-# GET USER
+# GET USER BY ID
 # ============================================================
 
 def get_user_by_id(user_id):
@@ -685,7 +683,7 @@ def delete_user(user_id):
 
         cur = con.cursor()
 
-        # Delete all surveys belonging to the user.
+        # Delete all surveys of this user.
         cur.execute(
             """
             DELETE FROM surveys
@@ -694,7 +692,7 @@ def delete_user(user_id):
             (user_id,)
         )
 
-        # Delete the user.
+        # Delete user.
         cur.execute(
             """
             DELETE FROM users
@@ -970,36 +968,40 @@ def calculate_match_strength(scores, stage):
 
 
 # ============================================================
-# RECOMMENDATIONS
+# RECOMMENDED PRODUCTS
 # ============================================================
 
 def get_recommendations(stage):
 
+    product_names = list(
+        PRODUCTS.keys()
+    )
+
     if stage == "Awareness":
 
-        return PRODUCTS[:4]
+        return product_names[:4]
 
     elif stage == "Interest":
 
-        return PRODUCTS[2:7]
+        return product_names[2:7]
 
     elif stage == "Consideration":
 
-        return PRODUCTS[4:9]
+        return product_names[4:9]
 
     elif stage == "Intent":
 
-        return PRODUCTS[6:11]
+        return product_names[6:11]
 
     elif stage == "Purchase":
 
-        return PRODUCTS[7:12]
+        return product_names[7:12]
 
     elif stage == "Loyalty":
 
-        return PRODUCTS[3:9]
+        return product_names[3:9]
 
-    return PRODUCTS[:4]
+    return product_names[:4]
 
 
 # ============================================================
@@ -1048,9 +1050,13 @@ def initialize_session():
 def logout():
 
     st.session_state.logged_in = False
+
     st.session_state.user_id = None
+
     st.session_state.username = None
+
     st.session_state.role = None
+
     st.session_state.page = "Home"
 
     st.rerun()
@@ -1063,7 +1069,7 @@ def logout():
 def show_header():
 
     st.markdown(
-        '<div class="main-title">🎯 FunnelVision</div>',
+        '<div class="main-title">FunnelVision</div>',
         unsafe_allow_html=True
     )
 
@@ -1176,7 +1182,7 @@ def home_page():
 
 def login_page():
 
-    st.title("🔐 Login")
+    st.title("Login")
 
     username = st.text_input(
         "Username"
@@ -1238,7 +1244,7 @@ def login_page():
 
 def register_page():
 
-    st.title("📝 Create Account")
+    st.title("Create Account")
 
     username = st.text_input(
         "Choose a username"
@@ -1319,7 +1325,7 @@ def register_page():
 
 def survey_page():
 
-    st.title("📋 FunnelVision Survey")
+    st.title("FunnelVision Survey")
 
     st.write(
         "Answer each question based on your usual shopping behaviour."
@@ -1411,24 +1417,29 @@ def results_page():
         stage
     )
 
-    st.title("🎯 Your FunnelVision Result")
+    # --------------------------------------------------------
+    # TITLE
+    # --------------------------------------------------------
+
+    st.title("Your FunnelVision Result")
+
+    # --------------------------------------------------------
+    # RESULT CARD
+    # --------------------------------------------------------
 
     st.markdown(
         f"""
-        <div class="stage-card">
-
-            <div class="stage-title">
-                {stage}
-            </div>
-
-            <p>
-                {content["description"]}
-            </p>
-
-        </div>
+<div class="stage-card">
+    <div class="stage-title">{stage}</div>
+    <p>{content["description"]}</p>
+</div>
         """,
         unsafe_allow_html=True
     )
+
+    # --------------------------------------------------------
+    # ONLY PREDICTED STAGE + MATCH STRENGTH
+    # --------------------------------------------------------
 
     col1, col2 = st.columns(2)
 
@@ -1446,6 +1457,10 @@ def results_page():
             f"{match_strength}%"
         )
 
+    # --------------------------------------------------------
+    # KEY POINTS
+    # --------------------------------------------------------
+
     st.subheader("📌 Key Points")
 
     for tip in content["tips"]:
@@ -1454,15 +1469,27 @@ def results_page():
             f"• {tip}"
         )
 
+    # --------------------------------------------------------
+    # BEHAVIOUR TAGS
+    # --------------------------------------------------------
+
     st.subheader("🏷️ Behaviour Tags")
 
     st.write(
         " • ".join(content["tags"])
     )
 
+    # --------------------------------------------------------
+    # STAGE MESSAGE
+    # --------------------------------------------------------
+
     st.info(
         content["offer"]
     )
+
+    # --------------------------------------------------------
+    # RECOMMENDED PRODUCTS
+    # --------------------------------------------------------
 
     st.subheader("🛍️ Recommended Products")
 
@@ -1472,30 +1499,21 @@ def results_page():
 
     for product in recommendations:
 
-        st.write(
-            f"• {product}"
+        price = PRODUCTS[product]
+
+        st.markdown(
+            f"""
+**{product}**
+
+💰 ₹{price:,}
+"""
         )
 
-    st.subheader("📊 Stage Scores")
+        st.divider()
 
-    score_table = []
-
-    for score_stage, score in scores.items():
-
-        score_table.append(
-            {
-                "Stage": score_stage,
-                "Score": round(score, 2)
-            }
-        )
-
-    st.dataframe(
-        score_table,
-        use_container_width=True,
-        hide_index=True
-    )
-
-    st.write("")
+    # --------------------------------------------------------
+    # TAKE SURVEY AGAIN
+    # --------------------------------------------------------
 
     if st.button(
         "Take Survey Again",
@@ -1524,7 +1542,7 @@ def dashboard_page():
         return
 
     st.title(
-        f"👋 Welcome, {user[1]}"
+        f"Welcome, {user[1]}"
     )
 
     latest_stage = get_latest_stage(
@@ -1535,23 +1553,16 @@ def dashboard_page():
         st.session_state.user_id
     )
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
 
     with col1:
-
-        st.metric(
-            "Username",
-            user[1]
-        )
-
-    with col2:
 
         st.metric(
             "Current Stage",
             latest_stage
         )
 
-    with col3:
+    with col2:
 
         st.metric(
             "Surveys Completed",
@@ -1561,7 +1572,7 @@ def dashboard_page():
     st.write("")
 
     if st.button(
-        "📋 Take FunnelVision Survey",
+        "Take FunnelVision Survey",
         use_container_width=True
     ):
 
@@ -1569,7 +1580,11 @@ def dashboard_page():
 
         st.rerun()
 
-    st.subheader("📊 My Survey History")
+    # --------------------------------------------------------
+    # USER SURVEY HISTORY
+    # --------------------------------------------------------
+
+    st.subheader("My Survey History")
 
     if surveys:
 
@@ -1597,9 +1612,13 @@ def dashboard_page():
             "You have not completed a survey yet."
         )
 
+    # --------------------------------------------------------
+    # ACCOUNT
+    # --------------------------------------------------------
+
     st.divider()
 
-    st.subheader("⚠️ Account")
+    st.subheader("Account")
 
     st.warning(
         "Deleting your account permanently removes your account "
@@ -1663,17 +1682,17 @@ def dashboard_page():
 
 def admin_page():
 
-    st.title("🛠️ Admin Dashboard")
+    st.title("Admin Dashboard")
 
     st.caption(
         "Manage registered users and completed surveys."
     )
 
     # ========================================================
-    # USERS
+    # USERS TABLE
     # ========================================================
 
-    st.header("👥 Users")
+    st.header("Users")
 
     users = get_all_users()
 
@@ -1692,10 +1711,7 @@ def admin_page():
                 }
             )
 
-        # ----------------------------------------------------
-        # ACTUAL TABLE
-        # ----------------------------------------------------
-
+        # REAL TABULAR COLUMN
         st.dataframe(
             user_table,
             use_container_width=True,
@@ -1747,7 +1763,7 @@ def admin_page():
         )
 
         if st.button(
-            "🗑️ Delete Selected User",
+            "Delete Selected User",
             use_container_width=True,
             key="admin_delete_user_button"
         ):
@@ -1819,7 +1835,7 @@ def admin_page():
 
     st.divider()
 
-    st.header("📋 Survey Management")
+    st.header("Survey Management")
 
     surveys = get_all_surveys()
 
@@ -1838,10 +1854,7 @@ def admin_page():
                 }
             )
 
-        # ----------------------------------------------------
-        # ACTUAL TABLE
-        # ----------------------------------------------------
-
+        # REAL TABULAR COLUMN
         st.dataframe(
             survey_table,
             use_container_width=True,
@@ -1894,7 +1907,7 @@ def admin_page():
         )
 
         if st.button(
-            "🗑️ Delete Selected Survey",
+            "Delete Selected Survey",
             use_container_width=True,
             key="admin_delete_survey_button"
         ):
@@ -1965,7 +1978,7 @@ def admin_page():
 
     st.divider()
 
-    st.subheader("📊 Database Summary")
+    st.subheader("Database Summary")
 
     total_users = len(
         get_all_users()
@@ -2000,7 +2013,7 @@ def sidebar():
 
     with st.sidebar:
 
-        st.title("🎯 FunnelVision")
+        st.title("FunnelVision")
 
         st.divider()
 
@@ -2016,7 +2029,7 @@ def sidebar():
             if st.session_state.role == "admin":
 
                 if st.button(
-                    "🛠️ Admin Dashboard",
+                    "Admin Dashboard",
                     use_container_width=True
                 ):
 
@@ -2027,7 +2040,7 @@ def sidebar():
             else:
 
                 if st.button(
-                    "🏠 Home",
+                    "Home",
                     use_container_width=True
                 ):
 
@@ -2036,7 +2049,7 @@ def sidebar():
                     st.rerun()
 
                 if st.button(
-                    "📊 Dashboard",
+                    "Dashboard",
                     use_container_width=True
                 ):
 
@@ -2045,7 +2058,7 @@ def sidebar():
                     st.rerun()
 
                 if st.button(
-                    "📋 Take Survey",
+                    "Take Survey",
                     use_container_width=True
                 ):
 
@@ -2056,7 +2069,7 @@ def sidebar():
             st.divider()
 
             if st.button(
-                "🚪 Logout",
+                "Logout",
                 use_container_width=True
             ):
 
@@ -2065,7 +2078,7 @@ def sidebar():
         else:
 
             if st.button(
-                "🏠 Home",
+                "Home",
                 use_container_width=True
             ):
 
@@ -2074,7 +2087,7 @@ def sidebar():
                 st.rerun()
 
             if st.button(
-                "🔐 Login",
+                "Login",
                 use_container_width=True
             ):
 
@@ -2083,7 +2096,7 @@ def sidebar():
                 st.rerun()
 
             if st.button(
-                "📝 Register",
+                "Register",
                 use_container_width=True
             ):
 
