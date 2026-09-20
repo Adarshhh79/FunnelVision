@@ -24,9 +24,9 @@ DB_NAME = "funnelvision.db"
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "admin123"
 
-# New version forces ONE fresh database reset.
-# It will not reset the database again after completion.
-DATABASE_VERSION = "fresh_start_v3"
+# This is a ONE-TIME database reset version.
+# Change this only when you intentionally want another fresh reset.
+DATABASE_VERSION = "fresh_start_v4"
 
 STAGES = [
     "Awareness",
@@ -53,6 +53,7 @@ QUESTIONS = [
             "I already know what I want"
         ]
     },
+
     {
         "question": "How often do you browse products online?",
         "options": [
@@ -63,6 +64,7 @@ QUESTIONS = [
             "Very frequently"
         ]
     },
+
     {
         "question": "What do you usually do when a product catches your attention?",
         "options": [
@@ -73,6 +75,7 @@ QUESTIONS = [
             "Consider buying it"
         ]
     },
+
     {
         "question": "How much do customer reviews influence your decision?",
         "options": [
@@ -83,6 +86,7 @@ QUESTIONS = [
             "They are very important"
         ]
     },
+
     {
         "question": "What usually convinces you to add a product to your cart?",
         "options": [
@@ -93,6 +97,7 @@ QUESTIONS = [
             "I am already planning to buy it"
         ]
     },
+
     {
         "question": "How many online purchases have you made in the past 6 months?",
         "options": [
@@ -103,6 +108,7 @@ QUESTIONS = [
             "More than 10"
         ]
     },
+
     {
         "question": "How do you usually react to the price of a product?",
         "options": [
@@ -113,6 +119,7 @@ QUESTIONS = [
             "Price is rarely a concern"
         ]
     },
+
     {
         "question": "How important is a return or replacement policy to you?",
         "options": [
@@ -123,6 +130,7 @@ QUESTIONS = [
             "Essential before buying"
         ]
     },
+
     {
         "question": "How likely are you to recommend a product you like?",
         "options": [
@@ -133,6 +141,7 @@ QUESTIONS = [
             "Very likely"
         ]
     },
+
     {
         "question": "Which statement best describes your current shopping mindset?",
         "options": [
@@ -336,19 +345,6 @@ def load_css():
             margin-bottom: 10px;
         }
 
-        .metric-card {
-            padding: 20px;
-            border-radius: 15px;
-            background: #f7f8fc;
-            border: 1px solid #e2e5ef;
-            text-align: center;
-        }
-
-        .login-box {
-            max-width: 500px;
-            margin: auto;
-        }
-
         </style>
         """,
         unsafe_allow_html=True
@@ -363,7 +359,9 @@ def get_connection():
 
     con = sqlite3.connect(DB_NAME)
 
-    con.execute("PRAGMA foreign_keys = ON")
+    con.execute(
+        "PRAGMA foreign_keys = ON"
+    )
 
     return con
 
@@ -378,7 +376,10 @@ def setup_db():
 
         cur = con.cursor()
 
+        # ----------------------------------------------------
         # Settings table
+        # ----------------------------------------------------
+
         cur.execute(
             """
             CREATE TABLE IF NOT EXISTS app_settings(
@@ -388,7 +389,10 @@ def setup_db():
             """
         )
 
-        # Check whether this fresh version has already been completed.
+        # ----------------------------------------------------
+        # Check current database version
+        # ----------------------------------------------------
+
         cur.execute(
             """
             SELECT setting_value
@@ -401,19 +405,24 @@ def setup_db():
         version_exists = cur.fetchone()
 
         # ----------------------------------------------------
-        # FIRST RUN OF THIS VERSION
+        # FRESH DATABASE RESET
         # ----------------------------------------------------
 
         if version_exists is None:
 
-            # Completely remove old tables.
-            # This removes the old hidden-column structure too.
+            # Delete old survey table first because it
+            # references the users table.
 
-            cur.execute("DROP TABLE IF EXISTS surveys")
-            cur.execute("DROP TABLE IF EXISTS users")
+            cur.execute(
+                "DROP TABLE IF EXISTS surveys"
+            )
+
+            cur.execute(
+                "DROP TABLE IF EXISTS users"
+            )
 
             # ------------------------------------------------
-            # CLEAN USERS TABLE
+            # CREATE CLEAN USERS TABLE
             # ------------------------------------------------
 
             cur.execute(
@@ -429,7 +438,7 @@ def setup_db():
             )
 
             # ------------------------------------------------
-            # CLEAN SURVEYS TABLE
+            # CREATE CLEAN SURVEYS TABLE
             # ------------------------------------------------
 
             cur.execute(
@@ -450,7 +459,7 @@ def setup_db():
             )
 
             # ------------------------------------------------
-            # CREATE FRESH ADMIN
+            # CREATE FRESH ADMIN ACCOUNT
             # ------------------------------------------------
 
             cur.execute(
@@ -471,7 +480,10 @@ def setup_db():
                 )
             )
 
-            # Mark reset as completed.
+            # ------------------------------------------------
+            # SAVE DATABASE VERSION
+            # ------------------------------------------------
+
             cur.execute(
                 """
                 INSERT INTO app_settings(
@@ -494,7 +506,6 @@ def setup_db():
             # NORMAL STARTUP
             # ------------------------------------------------
 
-            # Make sure the tables exist.
             cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS users(
@@ -524,7 +535,10 @@ def setup_db():
                 """
             )
 
-            # Make sure admin exists.
+            # ------------------------------------------------
+            # Make sure admin exists
+            # ------------------------------------------------
+
             cur.execute(
                 """
                 SELECT id
@@ -560,7 +574,7 @@ def setup_db():
 
 
 # ============================================================
-# USER FUNCTIONS
+# REGISTER USER
 # ============================================================
 
 def register_user(username, password):
@@ -568,9 +582,11 @@ def register_user(username, password):
     username = username.strip()
 
     if not username or not password:
+
         return False, "Username and password are required."
 
     if username.lower() == ADMIN_USERNAME.lower():
+
         return False, "This username is reserved."
 
     try:
@@ -585,8 +601,8 @@ def register_user(username, password):
                     role,
                     created_at
                 )
-                VALUES(?,?,?,?,)
-                """.replace("?,?,?,?,", "?,?,?,"),
+                VALUES(?,?,?,?)
+                """,
                 (
                     username,
                     password,
@@ -604,6 +620,10 @@ def register_user(username, password):
         return False, "Username already exists."
 
 
+# ============================================================
+# AUTHENTICATION
+# ============================================================
+
 def authenticate(username, password):
 
     with get_connection() as con:
@@ -612,7 +632,10 @@ def authenticate(username, password):
 
         cur.execute(
             """
-            SELECT id, username, role
+            SELECT
+                id,
+                username,
+                role
             FROM users
             WHERE username = ?
             AND password = ?
@@ -626,6 +649,10 @@ def authenticate(username, password):
         return cur.fetchone()
 
 
+# ============================================================
+# GET USER
+# ============================================================
+
 def get_user_by_id(user_id):
 
     with get_connection() as con:
@@ -634,7 +661,11 @@ def get_user_by_id(user_id):
 
         cur.execute(
             """
-            SELECT id, username, role, created_at
+            SELECT
+                id,
+                username,
+                role,
+                created_at
             FROM users
             WHERE id = ?
             """,
@@ -644,13 +675,17 @@ def get_user_by_id(user_id):
         return cur.fetchone()
 
 
+# ============================================================
+# DELETE USER
+# ============================================================
+
 def delete_user(user_id):
 
     with get_connection() as con:
 
         cur = con.cursor()
 
-        # Delete surveys first.
+        # Delete all surveys belonging to the user.
         cur.execute(
             """
             DELETE FROM surveys
@@ -659,7 +694,7 @@ def delete_user(user_id):
             (user_id,)
         )
 
-        # Then delete the user.
+        # Delete the user.
         cur.execute(
             """
             DELETE FROM users
@@ -673,7 +708,7 @@ def delete_user(user_id):
 
 
 # ============================================================
-# SURVEY FUNCTIONS
+# SAVE SURVEY
 # ============================================================
 
 def save_survey(
@@ -708,6 +743,10 @@ def save_survey(
         con.commit()
 
 
+# ============================================================
+# GET USER SURVEYS
+# ============================================================
+
 def get_user_surveys(user_id):
 
     with get_connection() as con:
@@ -732,6 +771,10 @@ def get_user_surveys(user_id):
         return cur.fetchall()
 
 
+# ============================================================
+# GET LATEST STAGE
+# ============================================================
+
 def get_latest_stage(user_id):
 
     with get_connection() as con:
@@ -752,10 +795,15 @@ def get_latest_stage(user_id):
         result = cur.fetchone()
 
         if result:
+
             return result[0]
 
         return "Not completed"
 
+
+# ============================================================
+# DELETE SURVEY
+# ============================================================
 
 def delete_survey(survey_id):
 
@@ -773,7 +821,7 @@ def delete_survey(survey_id):
 
 
 # ============================================================
-# ADMIN DATA
+# GET ALL USERS
 # ============================================================
 
 def get_all_users():
@@ -810,6 +858,10 @@ def get_all_users():
 
         return cur.fetchall()
 
+
+# ============================================================
+# GET ALL SURVEYS
+# ============================================================
 
 def get_all_surveys():
 
@@ -852,15 +904,18 @@ def calculate_scores(responses):
         "Loyalty": 0
     }
 
-    # Each answer contributes progressively.
     for index, answer in enumerate(responses):
 
-        answer_index = QUESTIONS[index]["options"].index(answer)
+        answer_index = QUESTIONS[index]["options"].index(
+            answer
+        )
 
         value = answer_index + 1
 
-        # Base score
-        scores["Awareness"] += max(0, 6 - value)
+        scores["Awareness"] += max(
+            0,
+            6 - value
+        )
 
         scores["Interest"] += value * 1.00
 
@@ -875,25 +930,34 @@ def calculate_scores(responses):
     return scores
 
 
+# ============================================================
+# PREDICT STAGE
+# ============================================================
+
 def predict_stage(scores):
 
-    # Determine highest scoring stage.
-    highest_stage = max(
+    return max(
         scores,
         key=scores.get
     )
 
-    return highest_stage
 
+# ============================================================
+# MATCH STRENGTH
+# ============================================================
 
 def calculate_match_strength(scores, stage):
 
     total = sum(scores.values())
 
     if total <= 0:
+
         return 0
 
-    stage_score = scores.get(stage, 0)
+    stage_score = scores.get(
+        stage,
+        0
+    )
 
     strength = (
         stage_score / total
@@ -915,23 +979,23 @@ def get_recommendations(stage):
 
         return PRODUCTS[:4]
 
-    if stage == "Interest":
+    elif stage == "Interest":
 
         return PRODUCTS[2:7]
 
-    if stage == "Consideration":
+    elif stage == "Consideration":
 
         return PRODUCTS[4:9]
 
-    if stage == "Intent":
+    elif stage == "Intent":
 
         return PRODUCTS[6:11]
 
-    if stage == "Purchase":
+    elif stage == "Purchase":
 
         return PRODUCTS[7:12]
 
-    if stage == "Loyalty":
+    elif stage == "Loyalty":
 
         return PRODUCTS[3:9]
 
@@ -945,27 +1009,35 @@ def get_recommendations(stage):
 def initialize_session():
 
     if "logged_in" not in st.session_state:
+
         st.session_state.logged_in = False
 
     if "user_id" not in st.session_state:
+
         st.session_state.user_id = None
 
     if "username" not in st.session_state:
+
         st.session_state.username = None
 
     if "role" not in st.session_state:
+
         st.session_state.role = None
 
     if "page" not in st.session_state:
+
         st.session_state.page = "Home"
 
     if "survey_responses" not in st.session_state:
+
         st.session_state.survey_responses = []
 
     if "survey_scores" not in st.session_state:
+
         st.session_state.survey_scores = {}
 
     if "survey_stage" not in st.session_state:
+
         st.session_state.survey_stage = None
 
 
@@ -1015,9 +1087,9 @@ def home_page():
         """
         ### Welcome to FunnelVision
 
-        FunnelVision analyzes your shopping behaviour and
-        estimates which stage of the customer journey best
-        describes your current behaviour.
+        FunnelVision analyzes shopping behaviour and estimates
+        which stage of the customer journey best describes
+        the current behaviour.
         """
     )
 
@@ -1031,8 +1103,8 @@ def home_page():
             """
             ### 🔎 Discover
 
-            Understand how you discover products
-            and what catches your attention.
+            Understand how products are discovered
+            and what catches attention.
             """
         )
 
@@ -1043,7 +1115,7 @@ def home_page():
             ### 📊 Analyze
 
             Answer a short set of questions
-            about your shopping behaviour.
+            about shopping behaviour.
             """
         )
 
@@ -1053,7 +1125,7 @@ def home_page():
             """
             ### 🎯 Understand
 
-            See your predicted customer journey
+            View your predicted customer journey
             stage and recommendations.
             """
         )
@@ -1072,6 +1144,7 @@ def home_page():
             ):
 
                 st.session_state.page = "Login"
+
                 st.rerun()
 
         with col2:
@@ -1082,6 +1155,7 @@ def home_page():
             ):
 
                 st.session_state.page = "Register"
+
                 st.rerun()
 
     else:
@@ -1092,6 +1166,7 @@ def home_page():
         ):
 
             st.session_state.page = "Dashboard"
+
             st.rerun()
 
 
@@ -1100,11 +1175,6 @@ def home_page():
 # ============================================================
 
 def login_page():
-
-    st.markdown(
-        '<div class="login-box">',
-        unsafe_allow_html=True
-    )
 
     st.title("🔐 Login")
 
@@ -1130,13 +1200,19 @@ def login_page():
         if user:
 
             st.session_state.logged_in = True
+
             st.session_state.user_id = user[0]
+
             st.session_state.username = user[1]
+
             st.session_state.role = user[2]
 
             if user[2] == "admin":
+
                 st.session_state.page = "Admin"
+
             else:
+
                 st.session_state.page = "Dashboard"
 
             st.rerun()
@@ -1152,12 +1228,8 @@ def login_page():
     ):
 
         st.session_state.page = "Register"
-        st.rerun()
 
-    st.markdown(
-        "</div>",
-        unsafe_allow_html=True
-    )
+        st.rerun()
 
 
 # ============================================================
@@ -1187,6 +1259,22 @@ def register_page():
         use_container_width=True
     ):
 
+        if not username.strip():
+
+            st.error(
+                "Please enter a username."
+            )
+
+            return
+
+        if not password:
+
+            st.error(
+                "Please enter a password."
+            )
+
+            return
+
         if password != confirm_password:
 
             st.error(
@@ -1202,7 +1290,9 @@ def register_page():
 
         if success:
 
-            st.success(message)
+            st.success(
+                message
+            )
 
             st.info(
                 "You can now login using your new account."
@@ -1210,13 +1300,16 @@ def register_page():
 
         else:
 
-            st.error(message)
+            st.error(
+                message
+            )
 
     if st.button(
         "Back to Login"
     ):
 
         st.session_state.page = "Login"
+
         st.rerun()
 
 
@@ -1276,7 +1369,9 @@ def survey_page():
         )
 
         st.session_state.survey_responses = responses
+
         st.session_state.survey_scores = scores
+
         st.session_state.survey_stage = stage
 
         save_survey(
@@ -1322,13 +1417,13 @@ def results_page():
         f"""
         <div class="stage-card">
 
-        <div class="stage-title">
-        {stage}
-        </div>
+            <div class="stage-title">
+                {stage}
+            </div>
 
-        <p>
-        {content["description"]}
-        </p>
+            <p>
+                {content["description"]}
+            </p>
 
         </div>
         """,
@@ -1361,11 +1456,9 @@ def results_page():
 
     st.subheader("🏷️ Behaviour Tags")
 
-    for tag in content["tags"]:
-
-        st.write(
-            f"**{tag}**"
-        )
+    st.write(
+        " • ".join(content["tags"])
+    )
 
     st.info(
         content["offer"]
@@ -1385,13 +1478,19 @@ def results_page():
 
     st.subheader("📊 Stage Scores")
 
-    score_data = {
-        "Stage": list(scores.keys()),
-        "Score": list(scores.values())
-    }
+    score_table = []
+
+    for score_stage, score in scores.items():
+
+        score_table.append(
+            {
+                "Stage": score_stage,
+                "Score": round(score, 2)
+            }
+        )
 
     st.dataframe(
-        score_data,
+        score_table,
         use_container_width=True,
         hide_index=True
     )
@@ -1404,6 +1503,7 @@ def results_page():
     ):
 
         st.session_state.page = "Survey"
+
         st.rerun()
 
 
@@ -1420,6 +1520,7 @@ def dashboard_page():
     if not user:
 
         logout()
+
         return
 
     st.title(
@@ -1427,6 +1528,10 @@ def dashboard_page():
     )
 
     latest_stage = get_latest_stage(
+        st.session_state.user_id
+    )
+
+    surveys = get_user_surveys(
         st.session_state.user_id
     )
 
@@ -1448,10 +1553,6 @@ def dashboard_page():
 
     with col3:
 
-        surveys = get_user_surveys(
-            st.session_state.user_id
-        )
-
         st.metric(
             "Surveys Completed",
             len(surveys)
@@ -1465,6 +1566,7 @@ def dashboard_page():
     ):
 
         st.session_state.page = "Survey"
+
         st.rerun()
 
     st.subheader("📊 My Survey History")
@@ -1526,7 +1628,8 @@ def dashboard_page():
 
             if st.button(
                 "Yes, Delete Account",
-                type="primary"
+                type="primary",
+                key="delete_my_account_confirm"
             ):
 
                 delete_user(
@@ -1545,10 +1648,12 @@ def dashboard_page():
         with col2:
 
             if st.button(
-                "Cancel"
+                "Cancel",
+                key="cancel_my_account_delete"
             ):
 
                 st.session_state.confirm_account_delete = False
+
                 st.rerun()
 
 
@@ -1565,7 +1670,7 @@ def admin_page():
     )
 
     # ========================================================
-    # USERS TABLE
+    # USERS
     # ========================================================
 
     st.header("👥 Users")
@@ -1587,7 +1692,10 @@ def admin_page():
                 }
             )
 
-        # REAL TABULAR DISPLAY
+        # ----------------------------------------------------
+        # ACTUAL TABLE
+        # ----------------------------------------------------
+
         st.dataframe(
             user_table,
             use_container_width=True,
@@ -1597,14 +1705,17 @@ def admin_page():
                     "ID",
                     width="small"
                 ),
+
                 "Username": st.column_config.TextColumn(
                     "Username",
                     width="medium"
                 ),
+
                 "Created": st.column_config.TextColumn(
                     "Created",
                     width="large"
                 ),
+
                 "Predicted Stage": st.column_config.TextColumn(
                     "Predicted Stage",
                     width="medium"
@@ -1612,30 +1723,41 @@ def admin_page():
             }
         )
 
+        # ----------------------------------------------------
+        # DELETE USER
+        # ----------------------------------------------------
+
         st.subheader("Delete User")
 
-        delete_user_options = {
-            f"{user[1]} (ID: {user[0]})": user[0]
-            for user in users
-        }
+        delete_user_options = {}
 
-        selected_user = st.selectbox(
-            "Select a user to delete",
+        for user in users:
+
+            label = (
+                f"{user[1]} "
+                f"(ID: {user[0]})"
+            )
+
+            delete_user_options[label] = user[0]
+
+        selected_user_label = st.selectbox(
+            "Select a user",
             list(delete_user_options.keys()),
-            key="delete_user_select"
+            key="admin_delete_user_select"
         )
 
         if st.button(
             "🗑️ Delete Selected User",
-            type="secondary",
-            use_container_width=True
+            use_container_width=True,
+            key="admin_delete_user_button"
         ):
 
-            user_id = delete_user_options[
-                selected_user
-            ]
+            st.session_state.delete_user_id = (
+                delete_user_options[
+                    selected_user_label
+                ]
+            )
 
-            st.session_state.delete_user_id = user_id
             st.session_state.confirm_admin_user_delete = True
 
         if st.session_state.get(
@@ -1644,8 +1766,8 @@ def admin_page():
         ):
 
             st.warning(
-                "This will permanently delete the selected user "
-                "and all of their surveys."
+                "Deleting this user will also permanently delete "
+                "all surveys belonging to this user."
             )
 
             col1, col2 = st.columns(2)
@@ -1655,15 +1777,16 @@ def admin_page():
                 if st.button(
                     "Confirm User Deletion",
                     type="primary",
-                    key="confirm_user_delete"
+                    key="confirm_admin_user_delete"
                 ):
 
                     delete_user(
                         st.session_state.delete_user_id
                     )
 
-                    st.session_state.confirm_admin_user_delete = False
                     st.session_state.delete_user_id = None
+
+                    st.session_state.confirm_admin_user_delete = False
 
                     st.success(
                         "User permanently deleted."
@@ -1675,11 +1798,12 @@ def admin_page():
 
                 if st.button(
                     "Cancel",
-                    key="cancel_user_delete"
+                    key="cancel_admin_user_delete"
                 ):
 
-                    st.session_state.confirm_admin_user_delete = False
                     st.session_state.delete_user_id = None
+
+                    st.session_state.confirm_admin_user_delete = False
 
                     st.rerun()
 
@@ -1714,7 +1838,10 @@ def admin_page():
                 }
             )
 
-        # REAL TABULAR DISPLAY
+        # ----------------------------------------------------
+        # ACTUAL TABLE
+        # ----------------------------------------------------
+
         st.dataframe(
             survey_table,
             use_container_width=True,
@@ -1724,14 +1851,17 @@ def admin_page():
                     "Survey ID",
                     width="small"
                 ),
+
                 "Username": st.column_config.TextColumn(
                     "Username",
                     width="medium"
                 ),
+
                 "Date": st.column_config.TextColumn(
                     "Date",
                     width="large"
                 ),
+
                 "Predicted Stage": st.column_config.TextColumn(
                     "Predicted Stage",
                     width="medium"
@@ -1739,31 +1869,42 @@ def admin_page():
             }
         )
 
+        # ----------------------------------------------------
+        # DELETE SURVEY
+        # ----------------------------------------------------
+
         st.subheader("Delete Survey")
 
-        delete_survey_options = {
-            f"Survey #{survey[0]} — {survey[1]} — {survey[3]}":
-                survey[0]
-            for survey in surveys
-        }
+        delete_survey_options = {}
 
-        selected_survey = st.selectbox(
-            "Select a survey to delete",
+        for survey in surveys:
+
+            label = (
+                f"Survey #{survey[0]} — "
+                f"{survey[1]} — "
+                f"{survey[3]}"
+            )
+
+            delete_survey_options[label] = survey[0]
+
+        selected_survey_label = st.selectbox(
+            "Select a survey",
             list(delete_survey_options.keys()),
-            key="delete_survey_select"
+            key="admin_delete_survey_select"
         )
 
         if st.button(
             "🗑️ Delete Selected Survey",
-            type="secondary",
-            use_container_width=True
+            use_container_width=True,
+            key="admin_delete_survey_button"
         ):
 
-            survey_id = delete_survey_options[
-                selected_survey
-            ]
+            st.session_state.delete_survey_id = (
+                delete_survey_options[
+                    selected_survey_label
+                ]
+            )
 
-            st.session_state.delete_survey_id = survey_id
             st.session_state.confirm_admin_survey_delete = True
 
         if st.session_state.get(
@@ -1782,15 +1923,16 @@ def admin_page():
                 if st.button(
                     "Confirm Survey Deletion",
                     type="primary",
-                    key="confirm_survey_delete"
+                    key="confirm_admin_survey_delete"
                 ):
 
                     delete_survey(
                         st.session_state.delete_survey_id
                     )
 
-                    st.session_state.confirm_admin_survey_delete = False
                     st.session_state.delete_survey_id = None
+
+                    st.session_state.confirm_admin_survey_delete = False
 
                     st.success(
                         "Survey permanently deleted."
@@ -1802,11 +1944,12 @@ def admin_page():
 
                 if st.button(
                     "Cancel",
-                    key="cancel_survey_delete"
+                    key="cancel_admin_survey_delete"
                 ):
 
-                    st.session_state.confirm_admin_survey_delete = False
                     st.session_state.delete_survey_id = None
+
+                    st.session_state.confirm_admin_survey_delete = False
 
                     st.rerun()
 
@@ -1817,12 +1960,12 @@ def admin_page():
         )
 
     # ========================================================
-    # ADMIN INFORMATION
+    # DATABASE SUMMARY
     # ========================================================
 
     st.divider()
 
-    st.subheader("ℹ️ Database Information")
+    st.subheader("📊 Database Summary")
 
     total_users = len(
         get_all_users()
@@ -1878,6 +2021,7 @@ def sidebar():
                 ):
 
                     st.session_state.page = "Admin"
+
                     st.rerun()
 
             else:
@@ -1888,6 +2032,7 @@ def sidebar():
                 ):
 
                     st.session_state.page = "Home"
+
                     st.rerun()
 
                 if st.button(
@@ -1896,6 +2041,7 @@ def sidebar():
                 ):
 
                     st.session_state.page = "Dashboard"
+
                     st.rerun()
 
                 if st.button(
@@ -1904,6 +2050,7 @@ def sidebar():
                 ):
 
                     st.session_state.page = "Survey"
+
                     st.rerun()
 
             st.divider()
@@ -1923,6 +2070,7 @@ def sidebar():
             ):
 
                 st.session_state.page = "Home"
+
                 st.rerun()
 
             if st.button(
@@ -1931,6 +2079,7 @@ def sidebar():
             ):
 
                 st.session_state.page = "Login"
+
                 st.rerun()
 
             if st.button(
@@ -1939,11 +2088,12 @@ def sidebar():
             ):
 
                 st.session_state.page = "Register"
+
                 st.rerun()
 
 
 # ============================================================
-# MAIN APPLICATION
+# START APPLICATION
 # ============================================================
 
 load_css()
@@ -1963,13 +2113,16 @@ if st.session_state.page == "Home":
 
     home_page()
 
+
 elif st.session_state.page == "Login":
 
     login_page()
 
+
 elif st.session_state.page == "Register":
 
     register_page()
+
 
 elif st.session_state.page == "Survey":
 
@@ -1980,7 +2133,9 @@ elif st.session_state.page == "Survey":
     else:
 
         st.session_state.page = "Login"
+
         st.rerun()
+
 
 elif st.session_state.page == "Results":
 
@@ -1991,7 +2146,9 @@ elif st.session_state.page == "Results":
     else:
 
         st.session_state.page = "Login"
+
         st.rerun()
+
 
 elif st.session_state.page == "Dashboard":
 
@@ -2005,7 +2162,9 @@ elif st.session_state.page == "Dashboard":
     else:
 
         st.session_state.page = "Login"
+
         st.rerun()
+
 
 elif st.session_state.page == "Admin":
 
@@ -2019,7 +2178,9 @@ elif st.session_state.page == "Admin":
     else:
 
         st.session_state.page = "Login"
+
         st.rerun()
+
 
 else:
 
