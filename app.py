@@ -149,102 +149,18 @@ QUESTIONS = [
 # =========================================================
 
 PRODUCTS = [
-    (
-        "Wireless Noise-Cancelling Headphones",
-        "Electronics",
-        199.99,
-        4.7,
-        2340,
-        ["trending", "bestseller"]
-    ),
-    (
-        "Smart Fitness Watch Pro",
-        "Wearables",
-        149.99,
-        4.5,
-        1876,
-        ["new", "trending"]
-    ),
-    (
-        "Premium Leather Backpack",
-        "Accessories",
-        89.99,
-        4.8,
-        956,
-        ["bestseller"]
-    ),
-    (
-        "Portable Bluetooth Speaker",
-        "Electronics",
-        59.99,
-        4.3,
-        3210,
-        ["trending", "value"]
-    ),
-    (
-        "Organic Cotton T-Shirt Pack",
-        "Clothing",
-        39.99,
-        4.6,
-        4521,
-        ["value", "bestseller"]
-    ),
-    (
-        "Stainless Steel Water Bottle",
-        "Lifestyle",
-        24.99,
-        4.4,
-        5670,
-        ["value"]
-    ),
-    (
-        "4K Ultra HD Webcam",
-        "Electronics",
-        129.99,
-        4.2,
-        890,
-        ["new"]
-    ),
-    (
-        "Ergonomic Office Chair",
-        "Furniture",
-        349.99,
-        4.9,
-        1234,
-        ["bestseller", "premium"]
-    ),
-    (
-        "Scented Candle Collection Set",
-        "Home",
-        34.99,
-        4.7,
-        2100,
-        ["trending"]
-    ),
-    (
-        "Wireless Charging Pad",
-        "Electronics",
-        29.99,
-        4.1,
-        4300,
-        ["value", "trending"]
-    ),
-    (
-        "Running Shoes Ultra Light",
-        "Footwear",
-        119.99,
-        4.6,
-        1670,
-        ["new", "bestseller"]
-    ),
-    (
-        "Smart Home Hub Controller",
-        "Smart Home",
-        79.99,
-        4.3,
-        980,
-        ["new"]
-    )
+    ("Wireless Noise-Cancelling Headphones", "Electronics", 199.99, 4.7, 2340, ["trending", "bestseller"]),
+    ("Smart Fitness Watch Pro", "Wearables", 149.99, 4.5, 1876, ["new", "trending"]),
+    ("Premium Leather Backpack", "Accessories", 89.99, 4.8, 956, ["bestseller"]),
+    ("Portable Bluetooth Speaker", "Electronics", 59.99, 4.3, 3210, ["trending", "value"]),
+    ("Organic Cotton T-Shirt Pack", "Clothing", 39.99, 4.6, 4521, ["value", "bestseller"]),
+    ("Stainless Steel Water Bottle", "Lifestyle", 24.99, 4.4, 5670, ["value"]),
+    ("4K Ultra HD Webcam", "Electronics", 129.99, 4.2, 890, ["new"]),
+    ("Ergonomic Office Chair", "Furniture", 349.99, 4.9, 1234, ["bestseller", "premium"]),
+    ("Scented Candle Collection Set", "Home", 34.99, 4.7, 2100, ["trending"]),
+    ("Wireless Charging Pad", "Electronics", 29.99, 4.1, 4300, ["value", "trending"]),
+    ("Running Shoes Ultra Light", "Footwear", 119.99, 4.6, 1670, ["new", "bestseller"]),
+    ("Smart Home Hub Controller", "Smart Home", 79.99, 4.3, 980, ["new"])
 ]
 
 # =========================================================
@@ -355,8 +271,7 @@ def setup_db():
         """)
 
         # -------------------------------------------------
-        # DATABASE MIGRATION
-        # Adds hidden column to older databases
+        # ADD HIDDEN COLUMN TO OLD DATABASES
         # -------------------------------------------------
 
         columns = [
@@ -373,7 +288,7 @@ def setup_db():
             )
 
         # -------------------------------------------------
-        # CREATE ADMIN IF DATABASE HAS NO ADMIN
+        # CREATE ADMIN IF NO ADMIN EXISTS
         # -------------------------------------------------
 
         admin_exists = cur.execute(
@@ -381,8 +296,6 @@ def setup_db():
         ).fetchone()[0]
 
         if admin_exists == 0:
-
-            now = datetime.now()
 
             try:
 
@@ -400,15 +313,74 @@ def setup_db():
                         "admin",
                         "admin123",
                         "admin",
-                        (now - timedelta(days=30)).isoformat()
+                        (
+                            datetime.now()
+                            - timedelta(days=30)
+                        ).isoformat()
                     )
                 )
 
             except sqlite3.IntegrityError:
+
                 pass
+
+        # -------------------------------------------------
+        # REMOVE OLD DEMO USERS
+        # -------------------------------------------------
+        #
+        # These were users from the original demo database.
+        # They are removed only by username.
+        #
+        # Real users such as Adarshh, Adhithya and allen123
+        # are NOT affected.
+        # -------------------------------------------------
+
+        old_demo_users = [
+            "sarah_m",
+            "james_k",
+            "emma_r",
+            "mike_t"
+        ]
+
+        for demo_username in old_demo_users:
+
+            demo_user = cur.execute(
+                """
+                SELECT id
+                FROM users
+                WHERE username=?
+                """,
+                (demo_username,)
+            ).fetchone()
+
+            if demo_user:
+
+                demo_user_id = demo_user[0]
+
+                # Delete their surveys first
+                cur.execute(
+                    """
+                    DELETE FROM surveys
+                    WHERE user_id=?
+                    """,
+                    (demo_user_id,)
+                )
+
+                # Delete the demo user
+                cur.execute(
+                    """
+                    DELETE FROM users
+                    WHERE id=?
+                    """,
+                    (demo_user_id,)
+                )
 
         con.commit()
 
+
+# =========================================================
+# USER FUNCTIONS
+# =========================================================
 
 def get_user(username, password):
 
@@ -416,11 +388,20 @@ def get_user(username, password):
 
         return con.execute(
             """
-            SELECT id, username, password, role, created_at
+            SELECT
+                id,
+                username,
+                password,
+                role,
+                created_at
             FROM users
-            WHERE lower(username)=lower(?) AND password=?
+            WHERE lower(username)=lower(?)
+            AND password=?
             """,
-            (username, password)
+            (
+                username,
+                password
+            )
         ).fetchone()
 
 
@@ -451,6 +432,10 @@ def register_user(username, password):
         ).fetchone()[0]
 
 
+# =========================================================
+# SURVEY DATABASE FUNCTIONS
+# =========================================================
+
 def get_surveys(user_id):
 
     with sqlite3.connect(DB_NAME) as con:
@@ -473,7 +458,12 @@ def get_surveys(user_id):
         ).fetchall()
 
 
-def save_survey(user_id, responses, stage, scores):
+def save_survey(
+    user_id,
+    responses,
+    stage,
+    scores
+):
 
     with sqlite3.connect(DB_NAME) as con:
 
@@ -505,15 +495,21 @@ def delete_user_account(user_id):
 
     with sqlite3.connect(DB_NAME) as con:
 
-        # Delete all surveys of this user
+        # Delete all surveys belonging to the user
         con.execute(
-            "DELETE FROM surveys WHERE user_id=?",
+            """
+            DELETE FROM surveys
+            WHERE user_id=?
+            """,
             (user_id,)
         )
 
-        # Delete user account
+        # Delete the user account
         con.execute(
-            "DELETE FROM users WHERE id=?",
+            """
+            DELETE FROM users
+            WHERE id=?
+            """,
             (user_id,)
         )
 
@@ -547,7 +543,11 @@ def hide_survey(survey_id):
     with sqlite3.connect(DB_NAME) as con:
 
         con.execute(
-            "UPDATE surveys SET hidden=1 WHERE id=?",
+            """
+            UPDATE surveys
+            SET hidden=1
+            WHERE id=?
+            """,
             (survey_id,)
         )
 
@@ -559,7 +559,11 @@ def unhide_survey(survey_id):
     with sqlite3.connect(DB_NAME) as con:
 
         con.execute(
-            "UPDATE surveys SET hidden=0 WHERE id=?",
+            """
+            UPDATE surveys
+            SET hidden=0
+            WHERE id=?
+            """,
             (survey_id,)
         )
 
@@ -571,7 +575,10 @@ def delete_survey(survey_id):
     with sqlite3.connect(DB_NAME) as con:
 
         con.execute(
-            "DELETE FROM surveys WHERE id=?",
+            """
+            DELETE FROM surveys
+            WHERE id=?
+            """,
             (survey_id,)
         )
 
@@ -606,22 +613,33 @@ def calculate(responses):
                 1.00
             )
 
-            scores[stage] += base_score * multiplier
+            scores[stage] += (
+                base_score * multiplier
+            )
 
     predicted = max(
         STAGES,
         key=lambda stage: scores[stage]
     )
 
-    total_score = sum(scores.values())
+    total_score = sum(
+        scores.values()
+    )
 
     match_strength = (
-        (scores[predicted] / total_score) * 100
+        (
+            scores[predicted]
+            / total_score
+        ) * 100
         if total_score > 0
         else 0
     )
 
-    return predicted, scores, match_strength
+    return (
+        predicted,
+        scores,
+        match_strength
+    )
 
 
 # =========================================================
@@ -647,7 +665,9 @@ def products_for_stage(stage):
         if product not in matched
     ]
 
-    return (matched + others)[:4]
+    return (
+        matched + others
+    )[:4]
 
 
 # =========================================================
@@ -783,7 +803,10 @@ def load_css():
 # HEADER
 # =========================================================
 
-def header(title, subtitle=None):
+def header(
+    title,
+    subtitle=None
+):
 
     st.markdown(
         f'<div class="main-title">{title}</div>',
@@ -814,9 +837,13 @@ def login_page():
         unsafe_allow_html=True
     )
 
-    st.subheader("Welcome back")
+    st.subheader(
+        "Welcome back"
+    )
 
-    with st.form("login_form"):
+    with st.form(
+        "login_form"
+    ):
 
         username = st.text_input(
             "Username"
@@ -840,9 +867,6 @@ def login_page():
         )
 
         if row:
-
-            # IMPORTANT:
-            # The dictionary is properly closed here.
 
             st.session_state.user = {
                 "id": row[0],
@@ -898,7 +922,9 @@ def register_page():
         unsafe_allow_html=True
     )
 
-    with st.form("register_form"):
+    with st.form(
+        "register_form"
+    ):
 
         username = st.text_input(
             "Username"
@@ -1027,9 +1053,13 @@ def delete_account_section():
                 use_container_width=True
             ):
 
-                user_id = st.session_state.user["id"]
+                user_id = (
+                    st.session_state.user["id"]
+                )
 
-                delete_user_account(user_id)
+                delete_user_account(
+                    user_id
+                )
 
                 st.session_state.clear()
 
@@ -1134,7 +1164,9 @@ def dashboard_page():
             "**Recommended products:**"
         )
 
-        for product in products_for_stage(stage):
+        for product in products_for_stage(
+            stage
+        ):
 
             st.write(
                 f"• {product[0]} | "
@@ -1161,8 +1193,8 @@ def survey_page():
     qid, question, options = QUESTIONS[step]
 
     progress = (
-        (step + 1) /
-        len(QUESTIONS)
+        (step + 1)
+        / len(QUESTIONS)
     )
 
     header(
@@ -1192,8 +1224,8 @@ def survey_page():
         for option in options
     ]
 
-    previous = st.session_state.responses.get(
-        qid
+    previous = (
+        st.session_state.responses.get(qid)
     )
 
     selected = st.radio(
@@ -1486,7 +1518,8 @@ def results_page():
             )
 
             st.caption(
-                "Why this matches you: " + why
+                "Why this matches you: "
+                + why
             )
 
             st.markdown(
