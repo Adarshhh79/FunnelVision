@@ -1,4 +1,17 @@
-STAGES = ["Awareness", "Interest", "Consideration", "Intent", "Purchase", "Loyalty"]
+import streamlit as st
+import sqlite3
+from datetime import datetime, timedelta
+import ast
+
+st.set_page_config(
+    page_title="FunnelVision",
+    page_icon="🎯",
+    layout="wide"
+)
+
+DB_NAME = "funnelvision.db"
+
+STAGES = ["Awareness", "Interest", "Consideration", "Intent", "Purchase", "Loyalty"]STAGES = ["Awareness", "Interest", "Consideration", "Intent", "Purchase", "Loyalty"]
 
 QUESTIONS = [
     ("q1", "How did you first discover online shopping platforms like ours?",
