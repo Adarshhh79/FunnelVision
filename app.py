@@ -1,6 +1,8 @@
 import streamlit as st
 import sqlite3
+import ast
 from datetime import datetime, timedelta
+
 
 # =========================================================
 # CONFIGURATION
@@ -22,6 +24,7 @@ STAGES = [
     "Purchase",
     "Loyalty"
 ]
+
 
 # =========================================================
 # QUESTIONS
@@ -144,6 +147,7 @@ QUESTIONS = [
     )
 ]
 
+
 # =========================================================
 # PRODUCTS
 # =========================================================
@@ -162,6 +166,7 @@ PRODUCTS = [
     ("Running Shoes Ultra Light", "Footwear", 119.99, 4.6, 1670, ["new", "bestseller"]),
     ("Smart Home Hub Controller", "Smart Home", 79.99, 4.3, 980, ["new"])
 ]
+
 
 # =========================================================
 # STAGE CONTENT
@@ -235,9 +240,38 @@ STAGE_CONTENT = {
     )
 }
 
+
 # =========================================================
 # DATABASE
 # =========================================================
+
+def calculate_match_from_scores(stage, scores):
+    """
+    Calculates the match strength percentage
+    from a saved score dictionary.
+    """
+
+    try:
+        total_score = sum(
+            float(value)
+            for value in scores.values()
+        )
+
+        predicted_score = float(
+            scores.get(stage, 0)
+        )
+
+        if total_score > 0:
+            return (
+                predicted_score /
+                total_score
+            ) * 100
+
+    except Exception:
+        pass
+
+    return 0.0
+
 
 def setup_db():
 
@@ -245,7 +279,10 @@ def setup_db():
 
         cur = con.cursor()
 
+        # -------------------------------------------------
         # USERS TABLE
+        # -------------------------------------------------
+
         cur.execute("""
             CREATE TABLE IF NOT EXISTS users(
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -256,7 +293,10 @@ def setup_db():
             )
         """)
 
+        # -------------------------------------------------
         # SURVEYS TABLE
+        # -------------------------------------------------
+
         cur.execute("""
             CREATE TABLE IF NOT EXISTS surveys(
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -265,13 +305,19 @@ def setup_db():
                 responses TEXT NOT NULL,
                 stage TEXT NOT NULL,
                 scores TEXT NOT NULL,
-                hidden INTEGER DEFAULT 0,
+                match_strength REAL DEFAULT 0,
                 FOREIGN KEY(user_id) REFERENCES users(id)
             )
         """)
 
         # -------------------------------------------------
-        # ADD HIDDEN COLUMN TO OLD DATABASES
+        # DATABASE MIGRATION
+        #
+        # Older versions of FunnelVision used a "hidden"
+        # column. This version does not use hidden surveys.
+        #
+        # If the old database is detected, the surveys table
+        # is rebuilt without the hidden column.
         # -------------------------------------------------
 
         columns = [
@@ -281,18 +327,127 @@ def setup_db():
             ).fetchall()
         ]
 
-        if "hidden" not in columns:
+        if columns:
+
+            has_hidden = "hidden" in columns
+            has_match_strength = (
+                "match_strength" in columns
+            )
+
+            if has_hidden or not has_match_strength:
+
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS surveys_new(
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id INTEGER NOT NULL,
+                        timestamp TEXT NOT NULL,
+                        responses TEXT NOT NULL,
+                        stage TEXT NOT NULL,
+                        scores TEXT NOT NULL,
+                        match_strength REAL DEFAULT 0,
+                        FOREIGN KEY(user_id) REFERENCES users(id)
+                    )
+                """)
+
+                old_rows = cur.execute(
+                    """
+                    SELECT
+                        id,
+                        user_id,
+                        timestamp,
+                        responses,
+                        stage,
+                        scores
+                    FROM surveys
+                    """
+                ).fetchall()
+
+                for row in old_rows:
+
+                    survey_id = row[0]
+                    user_id = row[1]
+                    timestamp = row[2]
+                    responses = row[3]
+                    stage = row[4]
+                    scores_text = row[5]
+
+                    try:
+                        parsed_scores = ast.literal_eval(
+                            scores_text
+                        )
+
+                        match_strength = (
+                            calculate_match_from_scores(
+                                stage,
+                                parsed_scores
+                            )
+                        )
+
+                    except Exception:
+                        match_strength = 0.0
+
+                    cur.execute(
+                        """
+                        INSERT OR REPLACE INTO surveys_new(
+                            id,
+                            user_id,
+                            timestamp,
+                            responses,
+                            stage,
+                            scores,
+                            match_strength
+                        )
+                        VALUES(?,?,?,?,?,?,?)
+                        """,
+                        (
+                            survey_id,
+                            user_id,
+                            timestamp,
+                            responses,
+                            stage,
+                            scores_text,
+                            match_strength
+                        )
+                    )
+
+                cur.execute(
+                    "DROP TABLE surveys"
+                )
+
+                cur.execute(
+                    "ALTER TABLE surveys_new RENAME TO surveys"
+                )
+
+        # -------------------------------------------------
+        # ADD MATCH STRENGTH TO DATABASES THAT ONLY NEED IT
+        # -------------------------------------------------
+
+        columns = [
+            row[1]
+            for row in cur.execute(
+                "PRAGMA table_info(surveys)"
+            ).fetchall()
+        ]
+
+        if "match_strength" not in columns:
 
             cur.execute(
-                "ALTER TABLE surveys ADD COLUMN hidden INTEGER DEFAULT 0"
+                """
+                ALTER TABLE surveys
+                ADD COLUMN match_strength REAL DEFAULT 0
+                """
             )
 
         # -------------------------------------------------
-        # CREATE ADMIN IF NO ADMIN EXISTS
+        # CREATE ADMIN
         # -------------------------------------------------
 
         admin_exists = cur.execute(
-            "SELECT COUNT(*) FROM users WHERE role='admin'"
+            """
+            SELECT COUNT(*)
+            FROM users
+            WHERE role='admin'
+            """
         ).fetchone()[0]
 
         if admin_exists == 0:
@@ -327,13 +482,6 @@ def setup_db():
         # -------------------------------------------------
         # REMOVE OLD DEMO USERS
         # -------------------------------------------------
-        #
-        # These were users from the original demo database.
-        # They are removed only by username.
-        #
-        # Real users such as Adarshh, Adhithya and allen123
-        # are NOT affected.
-        # -------------------------------------------------
 
         old_demo_users = [
             "sarah_m",
@@ -357,7 +505,6 @@ def setup_db():
 
                 demo_user_id = demo_user[0]
 
-                # Delete their surveys first
                 cur.execute(
                     """
                     DELETE FROM surveys
@@ -366,7 +513,6 @@ def setup_db():
                     (demo_user_id,)
                 )
 
-                # Delete the demo user
                 cur.execute(
                     """
                     DELETE FROM users
@@ -448,10 +594,9 @@ def get_surveys(user_id):
                 responses,
                 stage,
                 scores,
-                hidden
+                match_strength
             FROM surveys
             WHERE user_id=?
-            AND hidden=0
             ORDER BY id
             """,
             (user_id,)
@@ -462,7 +607,8 @@ def save_survey(
     user_id,
     responses,
     stage,
-    scores
+    scores,
+    match_strength
 ):
 
     with sqlite3.connect(DB_NAME) as con:
@@ -475,16 +621,17 @@ def save_survey(
                 responses,
                 stage,
                 scores,
-                hidden
+                match_strength
             )
-            VALUES(?,?,?,?,?,0)
+            VALUES(?,?,?,?,?,?)
             """,
             (
                 user_id,
                 datetime.now().isoformat(),
                 str(responses),
                 stage,
-                str(scores)
+                str(scores),
+                float(match_strength)
             )
         )
 
@@ -495,7 +642,6 @@ def delete_user_account(user_id):
 
     with sqlite3.connect(DB_NAME) as con:
 
-        # Delete all surveys belonging to the user
         con.execute(
             """
             DELETE FROM surveys
@@ -504,7 +650,6 @@ def delete_user_account(user_id):
             (user_id,)
         )
 
-        # Delete the user account
         con.execute(
             """
             DELETE FROM users
@@ -527,47 +672,13 @@ def get_all_surveys():
                 u.username,
                 s.timestamp,
                 s.stage,
-                s.responses,
-                s.scores,
-                s.hidden
+                s.match_strength
             FROM surveys s
             JOIN users u
                 ON s.user_id=u.id
             ORDER BY s.id DESC
             """
         ).fetchall()
-
-
-def hide_survey(survey_id):
-
-    with sqlite3.connect(DB_NAME) as con:
-
-        con.execute(
-            """
-            UPDATE surveys
-            SET hidden=1
-            WHERE id=?
-            """,
-            (survey_id,)
-        )
-
-        con.commit()
-
-
-def unhide_survey(survey_id):
-
-    with sqlite3.connect(DB_NAME) as con:
-
-        con.execute(
-            """
-            UPDATE surveys
-            SET hidden=0
-            WHERE id=?
-            """,
-            (survey_id,)
-        )
-
-        con.commit()
 
 
 def delete_survey(survey_id):
@@ -1141,7 +1252,10 @@ def dashboard_page():
 
     if surveys:
 
-        stage = surveys[-1][3]
+        latest_survey = surveys[-1]
+
+        stage = latest_survey[3]
+        match_strength = latest_survey[5]
 
         content = STAGE_CONTENT[stage]
 
@@ -1150,9 +1264,19 @@ def dashboard_page():
             unsafe_allow_html=True
         )
 
+        st.caption(
+            "🎯 YOUR LATEST SHOPPING PROFILE"
+        )
+
         st.markdown(
-            f"### Latest Stage: "
-            f"<span class='stage'>{stage}</span>",
+            f'<div class="stage">{stage}</div>',
+            unsafe_allow_html=True
+        )
+
+        st.markdown(
+            f'<div class="metric">'
+            f'Match Strength: {match_strength:.0f}%'
+            f'</div>',
             unsafe_allow_html=True
         )
 
@@ -1164,9 +1288,7 @@ def dashboard_page():
             "**Recommended products:**"
         )
 
-        for product in products_for_stage(
-            stage
-        ):
+        for product in products_for_stage(stage):
 
             st.write(
                 f"• {product[0]} | "
@@ -1317,7 +1439,8 @@ def survey_page():
                         st.session_state.user["id"],
                         st.session_state.responses,
                         stage,
-                        scores
+                        scores,
+                        strength
                     )
 
                     st.session_state.last_result = (
@@ -1354,17 +1477,12 @@ def results_page():
     )
 
     st.caption(
-        "🏆 STRONGEST FUNNEL STAGE"
+        "🎯 PREDICTED SHOPPING STAGE"
     )
 
     st.markdown(
         f'<div class="stage">{stage}</div>',
         unsafe_allow_html=True
-    )
-
-    st.write(
-        f"**Your score:** "
-        f"{scores[stage]:.1f}"
     )
 
     st.markdown(
@@ -1434,7 +1552,7 @@ def results_page():
     )
 
     st.caption(
-        "Products selected using your strongest shopping stage"
+        "Products selected using your predicted shopping stage"
     )
 
     columns = st.columns(2)
@@ -1604,23 +1722,66 @@ def admin_page():
 
         user_rows = []
 
-        for user in users:
+        with sqlite3.connect(DB_NAME) as con:
 
-            user_rows.append(
-                {
-                    "User ID": user[0],
-                    "Username": user[1],
-                    "Created": user[2].replace(
-                        "T",
-                        " "
-                    )[:19]
-                }
-            )
+            for user in users:
+
+                user_id = user[0]
+
+                latest = con.execute(
+                    """
+                    SELECT
+                        stage,
+                        match_strength
+                    FROM surveys
+                    WHERE user_id=?
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """,
+                    (user_id,)
+                ).fetchone()
+
+                if latest:
+
+                    predicted_stage = latest[0]
+                    match_strength = latest[1]
+
+                    if match_strength is None:
+
+                        match_strength = 0
+
+                else:
+
+                    predicted_stage = "Not completed"
+                    match_strength = 0
+
+                user_rows.append(
+                    {
+                        "User ID": user_id,
+                        "Username": user[1],
+                        "Created": user[2].replace(
+                            "T",
+                            " "
+                        )[:19],
+                        "Predicted Stage": predicted_stage,
+                        "Match Strength": (
+                            f"{match_strength:.0f}%"
+                            if latest
+                            else "—"
+                        )
+                    }
+                )
 
         st.dataframe(
             user_rows,
             use_container_width=True,
             hide_index=True
+        )
+
+    else:
+
+        st.info(
+            "No registered users yet."
         )
 
     # =====================================================
@@ -1635,18 +1796,6 @@ def admin_page():
 
     all_surveys = get_all_surveys()
 
-    visible_surveys = [
-        survey
-        for survey in all_surveys
-        if survey[6] == 0
-    ]
-
-    hidden_surveys = [
-        survey
-        for survey in all_surveys
-        if survey[6] == 1
-    ]
-
     # =====================================================
     # STATISTICS
     # =====================================================
@@ -1656,7 +1805,7 @@ def admin_page():
         for stage in STAGES
     }
 
-    for survey in visible_surveys:
+    for survey in all_surveys:
 
         if survey[3] in counts:
 
@@ -1667,28 +1816,23 @@ def admin_page():
             STAGES,
             key=lambda stage: counts[stage]
         )
-        if visible_surveys
+        if all_surveys
         else "—"
     )
 
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3 = st.columns(3)
 
     col1.metric(
-        "Visible Surveys",
-        len(visible_surveys)
-    )
-
-    col2.metric(
-        "Hidden Surveys",
-        len(hidden_surveys)
-    )
-
-    col3.metric(
         "Total Surveys",
         len(all_surveys)
     )
 
-    col4.metric(
+    col2.metric(
+        "Registered Users",
+        len(users)
+    )
+
+    col3.metric(
         "Most Recorded Stage",
         top_stage
     )
@@ -1698,32 +1842,32 @@ def admin_page():
     # =====================================================
 
     chosen = st.selectbox(
-        "Filter visible surveys by stage",
+        "Filter surveys by stage",
         ["All Stages"] + STAGES
     )
 
-    filtered_surveys = visible_surveys
+    filtered_surveys = all_surveys
 
     if chosen != "All Stages":
 
         filtered_surveys = [
             survey
-            for survey in visible_surveys
+            for survey in all_surveys
             if survey[3] == chosen
         ]
 
     # =====================================================
-    # VISIBLE SURVEYS
+    # SURVEYS
     # =====================================================
 
     st.markdown(
-        "### Visible Surveys"
+        "### Survey Records"
     )
 
     if not filtered_surveys:
 
         st.info(
-            "There are no visible surveys."
+            "There are no survey records."
         )
 
     else:
@@ -1734,6 +1878,7 @@ def admin_page():
             username = survey[1]
             timestamp = survey[2]
             stage = survey[3]
+            match_strength = survey[4]
 
             with st.container(
                 border=True
@@ -1764,109 +1909,19 @@ def admin_page():
                     )
 
                     st.write(
-                        f"Stage: **{stage}**"
+                        f"Predicted Stage: **{stage}**"
                     )
 
                 with right:
 
-                    if st.button(
-                        "👁️ Hide",
-                        key=f"hide_{survey_id}",
-                        use_container_width=True
-                    ):
-
-                        hide_survey(
-                            survey_id
-                        )
-
-                        st.rerun()
+                    st.write(
+                        f"Match Strength: **"
+                        f"{match_strength:.0f}%**"
+                    )
 
                     if st.button(
                         "🗑️ Delete",
                         key=f"delete_{survey_id}",
-                        use_container_width=True
-                    ):
-
-                        delete_survey(
-                            survey_id
-                        )
-
-                        st.rerun()
-
-    # =====================================================
-    # HIDDEN SURVEYS
-    # =====================================================
-
-    st.markdown("---")
-
-    st.markdown(
-        "### 👁️‍🗨️ Hidden Surveys"
-    )
-
-    if not hidden_surveys:
-
-        st.info(
-            "There are no hidden surveys."
-        )
-
-    else:
-
-        for survey in hidden_surveys:
-
-            survey_id = survey[0]
-            username = survey[1]
-            timestamp = survey[2]
-            stage = survey[3]
-
-            with st.container(
-                border=True
-            ):
-
-                left, middle, right = st.columns(
-                    [3, 3, 2]
-                )
-
-                with left:
-
-                    st.markdown(
-                        f"**Survey #{survey_id}**"
-                    )
-
-                    st.write(
-                        f"User: **{username}**"
-                    )
-
-                with middle:
-
-                    st.write(
-                        "Date: "
-                        + timestamp.replace(
-                            "T",
-                            " "
-                        )[:19]
-                    )
-
-                    st.write(
-                        f"Stage: **{stage}**"
-                    )
-
-                with right:
-
-                    if st.button(
-                        "👁️ Unhide",
-                        key=f"unhide_{survey_id}",
-                        use_container_width=True
-                    ):
-
-                        unhide_survey(
-                            survey_id
-                        )
-
-                        st.rerun()
-
-                    if st.button(
-                        "🗑️ Delete",
-                        key=f"delete_hidden_{survey_id}",
                         use_container_width=True
                     ):
 
@@ -1886,6 +1941,7 @@ load_css()
 setup_db()
 
 init_state()
+
 
 if st.session_state.user is None:
 
